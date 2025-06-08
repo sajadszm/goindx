@@ -1,0 +1,18 @@
+{
+  "greeting": "Hello, {name}!",
+  "farewell": "Goodbye!",
+  "status_expired_on": "Subscription expired on {date}.",
+  "never_expires": "Does not expire",
+  "subscribe_intro": "To get premium access for downloading larger files, please choose a payment method:",
+  "payment_method_paypal": "PayPal",
+  "payment_method_bitcoin": "Bitcoin",
+  "payment_method_zarinpal": "Zarinpal (ریال)",
+  "payment_method_selected_wip": "You selected {method_name}. This payment method is currently under construction. Please check back later.",
+  "admin_access_denied": "⛔ You are not authorized to use this command.",
+  "admin_help_text": "👑 *Admin Commands* 👑\n/admin_help - Show this help message\n/admin_view_users - View all users\n/admin_view_payments - View payment logs (WIP)\n/admin_view_logs - View admin action logs (WIP)\n/admin_update_user <user_id> <status> [days] - Update user subscription (WIP)\n/admin_broadcast <message> - Send message to all users (WIP)",
+  "admin_no_users_found": "No users found in the database.",
+  "admin_view_users_header": "👥 *All Users List* ({count} total):",
+  "admin_user_entry_format": "ID: `{user_id}` | Lang: `{user_lang_code}` | Sub: `{sub_status}` | Expires: `{exp_date_display}`",
+  "admin_too_many_users_to_display": "Too many users to display in one message. Consider pagination or more specific queries.",
+  "command_under_construction": "🛠️ This command is currently under construction. Please check back later."
+}
