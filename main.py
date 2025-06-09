@@ -17,7 +17,7 @@ from bot.handlers import register_handlers # Now import handlers
 load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN_IDS_STR = os.getenv("457060017")
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS")
 ADMIN_IDS = []
 if ADMIN_IDS_STR:
     try:
