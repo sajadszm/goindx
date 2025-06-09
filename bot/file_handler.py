@@ -53,7 +53,7 @@ def get_filename_from_url(url: str, headers: Optional[httpx.Headers] = None) -> 
                 if filename_part.lower().startswith("utf-8''"):
                     filename_part = unquote(filename_part[7:])
                 # Remove quotes if any
-                filename = filename_part.strip(""'")
+                filename = filename_part.strip('"\'')
                 if filename:
                     return filename
 
