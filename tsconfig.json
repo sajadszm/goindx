@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "commonjs",
+    "lib": ["dom", "esnext"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@mui/material": ["node_modules/@mui/material"],
+      "@mui/icons-material": ["node_modules/@mui/icons-material"],
+      "@emotion/react": ["node_modules/@emotion/react"],
+      "@emotion/styled": ["node_modules/@emotion/styled"],
+      "@/renderer/*": ["src/renderer/*"],
+      "@/main/*": ["src/main/*"],
+      "@/common/*": ["src/common/*"]
+    }
+  },
+  "include": ["src/**/*", "src/renderer/global.d.ts"],
+  "exclude": ["node_modules", "**/*.spec.ts", "dist", "release"]
+}
