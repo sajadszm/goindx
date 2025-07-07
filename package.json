@@ -1,8 +1,8 @@
 {
   "name": "wp-desktop-manager-jules",
   "version": "0.1.0",
-  "description": "WordPress Desktop Manager by Jules AI",
-  "author": "Jules AI",
+  "description": "WordPress Desktop Manager",
+  "author": "Sajad Sameie (instagram.com/sajjad.sameie)",
   "license": "ISC",
   "main": "dist/main/main.js",
   "homepage": "./",
