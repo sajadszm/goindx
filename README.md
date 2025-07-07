@@ -1,5 +1,4 @@
-# WordPress Desktop Manager (Jules AI)
-
+# WordPress Desktop Manager
 This is a desktop application built with Electron, React, and TypeScript for managing WordPress websites. It allows users to interact with their WordPress sites using the REST API, providing an alternative to the web admin panel.
 
 ## Features (Planned & Implemented)
