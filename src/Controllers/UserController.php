@@ -231,9 +231,112 @@ class UserController {
 
         // Add settings button later
         $buttons[] = [['text' => "⚙️ تنظیمات", 'callback_data' => 'settings_show']];
+        $buttons[] = [['text' => "راهنما ❓", 'callback_data' => 'show_guidance']];
+        $buttons[] = [['text' => "💬 پشتیبانی", 'callback_data' => 'support_request_start']];
+        $buttons[] = [['text' => "ℹ️ درباره ما", 'callback_data' => 'show_about_us']];
+
 
         $keyboard = ['inline_keyboard' => $buttons];
         $this->telegramAPI->sendMessage($chatId, $menuText, $keyboard, 'MarkdownV2'); // Using Markdown for bold
+    }
+
+    public function handleShowAboutUs($telegramId, $chatId, $messageId = null) {
+        $appSettingsModel = new \Models\AppSettingsModel();
+        $aboutUsText = $appSettingsModel->getSetting('about_us_text');
+
+        if (empty($aboutUsText)) {
+            $aboutUsText = "به ربات «همراه من» خوش آمدید!\n\nما تیمی هستیم که به سلامت و آگاهی شما و همراهتان اهمیت می‌دهیم. هدف ما ارائه ابزاری کاربردی برای درک بهتر چرخه قاعدگی و تقویت روابط زوجین است.\n\nنسخه فعلی: 1.0.0 (توسعه اولیه)";
+            // Optionally, save this default text if it's the first time and admin should see something to edit
+            // $appSettingsModel->setSetting('about_us_text', $aboutUsText);
+        }
+
+        $text = "ℹ️ **درباره ما**\n\n" . $aboutUsText;
+        $keyboard = [['inline_keyboard' => [[['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']]]]];
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        }
+    }
+
+    public function handleShowGuidance($telegramId, $chatId, $messageId = null) {
+        $guidanceText = "راهنمای استفاده از ربات «همراه من»:\n\n";
+        $guidanceText .= "1.  **ثبت نام و نقش:**\n";
+        $guidanceText .= "    - با اولین پیام به ربات، ثبت نام می‌شوید.\n";
+        $guidanceText .= "    - نقش خود را انتخاب کنید: «من پریود می‌شوم» یا «همراه هستم».\n\n";
+        $guidanceText .= "2.  **اتصال به همراه:**\n";
+        $guidanceText .= "    - از منوی اصلی، «💌 دعوت از همراه» را انتخاب کنید تا لینک دعوت بسازید.\n";
+        $guidanceText .= "    - لینک را برای همراه خود بفرستید. وقتی همراهتان روی لینک کلیک کند، به هم متصل می‌شوید.\n";
+        $guidanceText .= "    - برای پذیرش دعوت با کد: «🤝 پذیرش دعوتنامه» را زده و کد دریافتی را وارد کنید.\n";
+        $guidanceText .= "    - برای قطع اتصال: «💔 قطع اتصال» را از منوی اصلی انتخاب کنید.\n\n";
+        $guidanceText .= "3.  **ثبت اطلاعات دوره (برای افرادی که پریود می‌شوند):**\n";
+        $guidanceText .= "    - از منوی اصلی، «🩸 ثبت/ویرایش اطلاعات دوره» را انتخاب کنید.\n";
+        $guidanceText .= "    - تاریخ شروع آخرین پریود خود را وارد کنید (امروز، دیروز، یا از تقویم).\n";
+        $guidanceText .= "    - میانگین طول دوره پریود و طول کل چرخه قاعدگی خود را وارد کنید تا پیش‌بینی‌ها دقیق‌تر شوند.\n\n";
+        $guidanceText .= "4.  **ثبت علائم روزانه (برای افرادی که پریود می‌شوند):**\n";
+        $guidanceText .= "    - از منوی اصلی، «📝 ثبت علائم روزانه» را انتخاب کنید.\n";
+        $guidanceText .= "    - دسته‌بندی علائم (مثل حالت روحی، درد جسمی) را انتخاب کنید.\n";
+        $guidanceText .= "    - علائم مورد نظر را انتخاب (یا لغو انتخاب) کنید.\n";
+        $guidanceText .= "    - در نهایت «✅ ثبت نهایی علائم» را بزنید.\n\n";
+        $guidanceText .= "5.  **اطلاعات برای همراه:**\n";
+        $guidanceText .= "    - اگر به عنوان «همراه» متصل شده‌اید، در منوی اصلی خلاصه‌ای از وضعیت دوره همراهتان (روز چندم، فاز تخمینی) را می‌بینید.\n";
+        $guidanceText .= "    - اعلان‌ها و پیام‌های روزانه متناسب با وضعیت همراهتان دریافت خواهید کرد.\n\n";
+        $guidanceText .= "6.  **اعلان‌ها و پیام‌های روزانه:**\n";
+        $guidanceText .= "    - ربات اعلان‌هایی مانند نزدیک شدن به PMS، شروع پریود، پایان پریود و روز تخمک‌گذاری ارسال می‌کند.\n";
+        $guidanceText .= "    - همچنین پیام‌های آموزشی و احساسی روزانه متناسب با نقش و وضعیت دوره دریافت خواهید کرد.\n";
+        $guidanceText .= "    - می‌توانید زمان دریافت اعلان‌های روزانه را از «⚙️ تنظیمات» > «⏰ تنظیم زمان اعلان‌ها» تغییر دهید.\n\n";
+        $guidanceText .= "7.  **پشتیبانی:**\n";
+        $guidanceText .= "    - از منوی اصلی، «💬 پشتیبانی» را انتخاب کنید. پیام بعدی شما مستقیما برای ادمین ارسال خواهد شد.\n\n";
+        $guidanceText .= "امیدواریم این ربات برای شما مفید باشد! 😊";
+
+        $keyboard = [['inline_keyboard' => [[['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']]]]];
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($chatId, $messageId, $guidanceText, $keyboard, 'Markdown');
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $guidanceText, $keyboard, 'Markdown');
+        }
+    }
+
+    public function handleSupportRequestStart($telegramId, $chatId, $messageId = null) {
+        $hashedTelegramId = EncryptionHelper::hashIdentifier((string)$telegramId);
+        $this->userModel->updateUser($hashedTelegramId, ['user_state' => 'awaiting_support_message']);
+
+        $text = "💬 شما در حال ارسال پیام به پشتیبانی هستید.\nلطفا پیام خود را بنویسید و ارسال کنید. پیام شما مستقیما برای ادمین ارسال خواهد شد.\n\nبرای لغو، /cancel را ارسال کنید یا از منوی اصلی گزینه دیگری انتخاب نمایید.";
+
+        if ($messageId) {
+            // Remove keyboard from previous message if we are editing it
+            $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, null);
+        }
+    }
+
+    public function handleForwardSupportMessage($telegramUserId, $chatId, $text, $firstName, $username) {
+        $adminTelegramId = ADMIN_TELEGRAM_ID;
+        if (empty($adminTelegramId) || $adminTelegramId === 'YOUR_ADMIN_TELEGRAM_ID') {
+            error_log("Admin Telegram ID not configured. Cannot forward support message.");
+            $this->telegramAPI->sendMessage($chatId, "متاسفانه امکان ارسال پیام به پشتیبانی در حال حاضر وجود ندارد.");
+            return;
+        }
+
+        $forwardMessage = "پیام پشتیبانی جدید از کاربر:\n";
+        $forwardMessage .= "نام: {$firstName}\n";
+        if ($username) {
+            $forwardMessage .= "نام کاربری تلگرام: @{$username}\n";
+        }
+        $forwardMessage .= "ID تلگرام کاربر: {$telegramUserId}\n"; // Actual Telegram ID of the user
+        $forwardMessage .= "متن پیام:\n--------------------\n{$text}\n--------------------";
+
+        $this->telegramAPI->sendMessage($adminTelegramId, $forwardMessage);
+
+        // Clear user state
+        $hashedTelegramId = EncryptionHelper::hashIdentifier((string)$telegramUserId);
+        $this->userModel->updateUser($hashedTelegramId, ['user_state' => null]);
+
+        $this->telegramAPI->sendMessage($chatId, "پیام شما با موفقیت برای پشتیبانی ارسال شد. ✅");
+        $this->showMainMenu($chatId, "به منوی اصلی بازگشتید:");
     }
 
     public function handleSettings($telegramId, $chatId, $messageId = null) {
@@ -716,6 +819,10 @@ class UserController {
             $this->symptomModel = new \Models\SymptomModel();
         }
         return $this->symptomModel;
+    }
+
+    public function getUserModel(): \Models\UserModel { // Added getter
+        return $this->userModel;
     }
 
     public function handleLogSymptomStart($telegramId, $chatId, $messageId = null, $dateOption = 'today') {

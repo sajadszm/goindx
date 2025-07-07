@@ -62,13 +62,29 @@ try {
                 // Unknown /start payload
                 $userController->handleStart($userId, $chatId, $firstName, $username);
             }
-        } elseif ($text === '/start' || !empty($text)) { // Handle /start or any other text message
-            // Check if user is awaiting a specific input, e.g. invitation token
-            // This state management needs to be implemented (e.g. in DB user session or cache)
-            // For now, any text just goes to main menu or start if not registered.
-            $userController->handleStart($userId, $chatId, $firstName, $username); // This will show main menu if registered
+    } elseif (!empty($text)) { // Handle any other text message
+        // Check user state for specific inputs like support message
+        $hashedTelegramId = \Helpers\EncryptionHelper::hashIdentifier((string)$userId);
+        $currentUser = $userController->getUserModel()->findUserByTelegramId($hashedTelegramId); // Need direct access or a getter in UserController
+
+        if ($currentUser && isset($currentUser['user_state']) && $currentUser['user_state'] === 'awaiting_support_message') {
+            if ($text === '/cancel') { // Basic cancellation for support message
+                $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
+                $telegramAPI->sendMessage($chatId, "ارسال پیام به پشتیبانی لغو شد.");
+                $userController->showMainMenu($chatId);
+            } else {
+                $userController->handleForwardSupportMessage((string)$userId, $chatId, $text, $firstName, $username);
+            }
+        } elseif ($text === '/start') { // Explicit /start command
+            $userController->handleStart($userId, $chatId, $firstName, $username);
+        } else { // Any other text message, show main menu if registered
+            $userController->handleStart($userId, $chatId, $firstName, $username);
+        }
         }
         // Add more message type handlers here (photo, audio, etc.) if needed
+    // If $text is empty (e.g. user sent a photo, sticker etc without text), it won't be handled by above.
+    // We might want a default handler or ignore. For now, only text is actively processed.
+
 
     } elseif (isset($update['callback_query'])) {
         $callbackQuery = $update['callback_query'];
@@ -178,6 +194,15 @@ try {
                 break;
             case 'settings_set_notify_time': // value: HH:MM
                 $userController->handleSetNotificationTime($userId, $chatId, $messageId, $value);
+                break;
+            case 'show_guidance':
+                $userController->handleShowGuidance($userId, $chatId, $messageId);
+                break;
+            case 'support_request_start':
+                $userController->handleSupportRequestStart($userId, $chatId, $messageId);
+                break;
+            case 'show_about_us':
+                $userController->handleShowAboutUs($userId, $chatId, $messageId);
                 break;
 
             // Add more callback handlers here
