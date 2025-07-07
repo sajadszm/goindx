@@ -3,14 +3,30 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { SiteConfig } from '@/common/types';
 import SiteForm from '@/renderer/components/SiteManagement/SiteForm';
 import SiteList from '@/renderer/components/SiteManagement/SiteList';
-import { Container, Typography, CircularProgress, Alert, Box } from '@mui/material';
+import {
+    Container,
+    Typography,
+    CircularProgress,
+    Alert,
+    Box,
+    FormControl,        // Added
+    InputLabel,       // Added
+    Select,           // Added
+    MenuItem,         // Added
+    SelectChangeEvent,// Added
+    Paper,            // Added
+    Button            // Added Button
+} from '@mui/material';
 
 const SitesPage: React.FC = () => {
   const [sites, setSites] = useState<SiteConfig[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editingSite, setEditingSite] = useState<SiteConfig | null>(null);
-  const [formMessage, setFormMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [editingSite, setEditingSite] = useState<Partial<SiteConfig> | null>(null); // For editing, holds site being edited
+  const [isEditMode, setIsEditMode] = useState(false);
+  // General page messages, e.g., after delete. Form has its own message state.
+  const [pageMessage, setPageMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
 
   const fetchSites = useCallback(async () => {
     setIsLoading(true);
@@ -37,73 +53,84 @@ const SitesPage: React.FC = () => {
     fetchSites();
   }, [fetchSites]);
 
-  const handleFormSubmit = async (siteData: Omit<SiteConfig, 'id'>): Promise<{success: boolean, message: string}> => {
+  const handleFormSubmit = async (data: Pick<SiteConfig, 'url' | 'name'> | Pick<SiteConfig, 'name'>): Promise<{success: boolean, message: string}> => {
     setIsLoading(true);
-    setFormMessage(null);
+    setPageMessage(null); // Clear page-level messages
     let resultMessage = { success: false, message: "Operation failed" };
+
     try {
-      if (window.electronAPI) {
-        const ipcChannel = editingSite ? 'sites:update' : 'sites:add';
-        const payload = editingSite ? [editingSite.id, siteData] : [siteData];
-        const result = await window.electronAPI.invoke(ipcChannel, ...payload);
-
-        setFormMessage({ type: result.success ? 'success' : 'error', text: result.message });
-        resultMessage = { success: result.success, message: result.message };
-
-        if (result.success) {
-          fetchSites(); // Refresh list
-          setEditingSite(null); // Clear editing state
-          // Clear form by resetting initialData of SiteForm (indirectly via key change or prop update)
-        }
-      } else {
-        resultMessage = { success: false, message: 'Electron API not available.' };
-        setFormMessage({ type: 'error', text: resultMessage.message });
+      if (!window.electronAPI) {
+        throw new Error('Electron API not available.');
       }
+
+      let result;
+      if (isEditMode && editingSite && editingSite.id) {
+        // We are editing, only name can be changed. 'data' will be Pick<SiteConfig, 'name'>
+        result = await window.electronAPI.invoke('sites:update', editingSite.id, data as Pick<SiteConfig, 'name'>);
+      } else {
+        // We are adding a new site. 'data' will be Pick<SiteConfig, 'url' | 'name'>
+        result = await window.electronAPI.invoke('sites:add', data as Pick<SiteConfig, 'url' | 'name'>);
+      }
+
+      resultMessage = { success: result.success, message: result.message };
+
+      if (result.success) {
+        fetchSites(); // Refresh list
+        if (isEditMode) {
+          setPageMessage({ type: 'success', text: result.message || 'Site name updated!' });
+          setIsEditMode(false);
+          setEditingSite(null);
+        } else {
+          // For add, SiteForm clears itself and shows message. No page level message needed here.
+        }
+      }
+      // If not successful, SiteForm will display the error message from result.message
     } catch (err: any) {
       resultMessage = { success: false, message: err.message || 'An unexpected error occurred.' };
-      setFormMessage({ type: 'error', text: resultMessage.message });
+      // This error will be returned to SiteForm to display
     } finally {
       setIsLoading(false);
     }
-    return resultMessage;
-  };
-
-  const handleTestConnection = async (siteData: Omit<SiteConfig, 'id'>): Promise<{success: boolean, message: string, data?: any}> => {
-    // This function is passed to SiteForm, which calls it.
-    // SiteForm will display the message from this result.
-    if (window.electronAPI) {
-      // Need to provide a temporary ID for the test function if it's a new site
-      const testData: SiteConfig = { ...siteData, id: editingSite?.id || 'temp-test-id' };
-      return window.electronAPI.invoke('sites:test-connection', testData);
-    }
-    return { success: false, message: 'Electron API not available.' };
+    return resultMessage; // This result is used by SiteForm to display its own message
   };
 
   const handleEditSite = (site: SiteConfig) => {
-    setEditingSite(site);
-    setFormMessage(null); // Clear previous form messages
-    // Scroll to form or highlight it
+    setEditingSite(site); // Set the full site object for initialData
+    setIsEditMode(true);
+    setPageMessage(null); // Clear previous page messages
+    window.scrollTo(0, 0); // Scroll to top to see form
   };
 
+  const handleAddNew = () => {
+    setIsEditMode(false);
+    setEditingSite(null); // Clear any existing editing state
+    setPageMessage(null);
+    window.scrollTo(0, 0); // Scroll to top to see form
+  };
+
+
   const handleDeleteSite = async (siteId: string) => {
-    setIsLoading(true); // Could use a specific loading state for delete
-    setError(null);
-    setFormMessage(null);
-    if (window.confirm('Are you sure you want to delete this site connection?')) {
+    setIsLoading(true);
+    setPageMessage(null);
+    if (window.confirm('Are you sure you want to delete this site configuration?')) {
       try {
         if (window.electronAPI) {
           const result = await window.electronAPI.invoke('sites:delete', siteId);
           if (result.success) {
-            setFormMessage({ type: 'success', text: result.message || 'Site deleted successfully.' });
-            fetchSites(); // Refresh list
+            setPageMessage({ type: 'success', text: result.message || 'Site deleted successfully.' });
+            fetchSites();
+            if (editingSite?.id === siteId) { // If the deleted site was being edited
+              setIsEditMode(false);
+              setEditingSite(null);
+            }
           } else {
-            setFormMessage({ type: 'error', text: result.message || 'Failed to delete site.' });
+            setPageMessage({ type: 'error', text: result.message || 'Failed to delete site.' });
           }
         } else {
-          setFormMessage({ type: 'error', text: 'Electron API not available.' });
+          setPageMessage({ type: 'error', text: 'Electron API not available.' });
         }
       } catch (err: any) {
-        setFormMessage({ type: 'error', text: err.message || 'An unexpected error occurred.' });
+        setPageMessage({ type: 'error', text: err.message || 'An unexpected error occurred.' });
       } finally {
         setIsLoading(false);
       }
@@ -115,28 +142,54 @@ const SitesPage: React.FC = () => {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        Manage WordPress Sites
+        Configure WordPress Sites (Max: 5)
+      </Typography>
+      <Typography variant="body2" color="textSecondary" sx={{mb: 2}}>
+        Add the URL and a friendly name for your WordPress sites. You will log in to them in a separate step.
       </Typography>
 
+
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-
-      <SiteForm
-        key={editingSite ? editingSite.id : 'new-site-form'} // Change key to reset form when editingSite changes
-        onSubmit={handleFormSubmit}
-        onTestConnection={handleTestConnection}
-        initialData={editingSite || {}} // Pass empty object for new, or editingSite data
-        isLoading={isLoading}
-      />
-
-      {formMessage && !editingSite && /* Show general form messages if not in edit mode where form has its own */ (
-        <Alert severity={formMessage.type} sx={{ mt: 2, whiteSpace: 'pre-wrap' }}>
-          {formMessage.text}
+      {pageMessage && (
+        <Alert severity={pageMessage.type} sx={{ mt: 1, mb: 2, whiteSpace: 'pre-wrap' }} onClose={() => setPageMessage(null)}>
+          {pageMessage.text}
         </Alert>
       )}
 
+      <SiteForm
+        key={editingSite ? editingSite.id : 'new-site-form'}
+        onSubmit={handleFormSubmit}
+        initialData={editingSite || {}}
+        isEditMode={isEditMode}
+        isLoading={isLoading}
+      />
+
+      {isEditMode && (
+        <Button onClick={() => { setIsEditMode(false); setEditingSite(null); }} sx={{mb:2}}>
+          Cancel Edit / Add New
+        </Button>
+      )}
+
+
       {isLoading && !sites.length && <CircularProgress sx={{ display: 'block', margin: '20px auto' }} />}
 
-      {!isLoading && <SiteList sites={sites} onEdit={handleEditSite} onDelete={handleDeleteSite} />}
+      {!isLoading && (
+        <SiteList
+            sites={sites}
+            onEdit={handleEditSite}
+            onDelete={handleDeleteSite}
+        />
+      )}
+      {/* Button to explicitly switch to "Add New" mode if form is not for editing */}
+      {!isEditMode && sites.length >=5 && (
+          <Alert severity="info" sx={{mt: 2}}>Maximum number of sites (5) reached.</Alert>
+      )}
+      {!isEditMode && sites.length < 5 && (
+           <Button onClick={handleAddNew} variant="outlined" sx={{mt: 2, display: editingSite ? 'none': 'flex' }}>
+             Add Another Site
+           </Button>
+      )}
+
     </Container>
   );
 };

@@ -1,6 +1,6 @@
 // src/main/services/siteStore.ts
 import Store from 'electron-store';
-import { SiteConfig } from '@/common/types';
+import { SiteConfig } from '@/common/types'; // SiteConfig type is now simpler
 import crypto from 'crypto';
 
 // Define a schema for your store to ensure type safety and provide defaults.
@@ -44,17 +44,27 @@ const generateSiteId = (url: string): string => {
   return crypto.createHash('sha256').update(url).digest('hex').substring(0, 16);
 };
 
+const MAX_SITES = 5;
+
 export const siteStore = {
-  addSite: (newSiteData: Omit<SiteConfig, 'id'>): SiteConfig => {
+  addSite: (newSiteData: Omit<SiteConfig, 'id'>): SiteConfig => { // newSiteData now only contains url and optional name
     const sites = store.get('sites', []);
+
+    if (sites.length >= MAX_SITES) {
+      throw new Error(`Maximum number of sites (${MAX_SITES}) reached. Please remove a site to add a new one.`);
+    }
+
     // Check if site with this URL already exists to prevent duplicates based on URL
-    if (sites.some(s => s.url === newSiteData.url)) {
+    // Normalize URL slightly to avoid issues with/without trailing slash for uniqueness check
+    const normalizedNewUrl = newSiteData.url.trim().replace(/\/$/, '');
+    if (sites.some(s => s.url.trim().replace(/\/$/, '') === normalizedNewUrl)) {
       throw new Error(`Site with URL ${newSiteData.url} already exists.`);
     }
+
     const newSite: SiteConfig = {
-      ...newSiteData,
-      id: generateSiteId(newSiteData.url), // Generate ID based on URL or use UUID
-      restApiPrefix: newSiteData.restApiPrefix || 'wp-json', // Default prefix
+      name: newSiteData.name, // Will be undefined if not provided, that's fine
+      url: normalizedNewUrl, // Store normalized URL
+      id: generateSiteId(normalizedNewUrl), // Generate ID based on normalized URL
     };
     sites.push(newSite);
     store.set('sites', sites);
@@ -72,22 +82,35 @@ export const siteStore = {
 
   getSiteByUrl: (url: string): SiteConfig | undefined => {
     const sites = store.get('sites', []);
-    return sites.find(site => site.url === url);
+    const normalizedUrl = url.trim().replace(/\/$/, '');
+    return sites.find(site => site.url === normalizedUrl);
   },
 
-  updateSite: (id: string, updatedSiteData: Partial<Omit<SiteConfig, 'id'>>): SiteConfig | undefined => {
+  // updateSite now only updates 'name' or 'url'. If URL changes, ID also changes.
+  // This means update is more like a 'replace' if URL is modified.
+  // A simpler update might only allow changing the 'name'.
+  // For now, let's assume if URL changes, we might need to re-generate ID and re-validate uniqueness.
+  // Or, more simply, prevent URL change via update, only allow name change.
+  // Let's go with: URL change means it's effectively a new site config, so delete old and add new.
+  // This update function will only update the 'name'.
+  updateSite: (id: string, updatedSiteData: Pick<SiteConfig, 'name'>): SiteConfig | undefined => {
     const sites = store.get('sites', []);
     const siteIndex = sites.findIndex(site => site.id === id);
     if (siteIndex === -1) {
-      return undefined; // Or throw new Error('Site not found');
+      // console.warn(`Site with ID ${id} not found for update.`);
+      return undefined;
     }
-    // If URL is changed, the ID might need to be regenerated if it's based on URL.
-    // For simplicity, we assume ID remains constant once created, or URL is not changed via this method.
-    // If URL can change, ensure ID uniqueness or use a different ID generation strategy (e.g. UUID).
-    sites[siteIndex] = { ...sites[siteIndex], ...updatedSiteData };
+
+    sites[siteIndex] = {
+      ...sites[siteIndex],
+      name: updatedSiteData.name || sites[siteIndex].name, // Update name, keep URL and ID
+    };
     store.set('sites', sites);
     return sites[siteIndex];
   },
+
+  // If a user wants to change a URL, they should delete the old site config and add a new one.
+  // This keeps ID generation simple (based on URL).
 
   deleteSite: (id: string): boolean => {
     let sites = store.get('sites', []);

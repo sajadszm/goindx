@@ -1,6 +1,6 @@
 // src/main/services/wordpressConnector.ts
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { SiteConfig, WPUser, WPPost, WPPostCreatePayload, WPPostUpdatePayload } from '@/common/types';
+import { SiteConfig, WPUser, WPPost, WPPostCreatePayload, WPPostUpdatePayload, SiteSessionAuth } from '@/common/types'; // Added SiteSessionAuth
 import { siteStore } from './siteStore'; // Ensure siteStore is imported
 
 // Define a type for expected WordPress API error responses
@@ -14,54 +14,60 @@ interface WPErrorResponse {
 }
 
 // Helper to create an Axios instance for a given site configuration
-const createApiClient = (site: SiteConfig): AxiosInstance => {
-  const baseURL = `${site.url.replace(/\/$/, '')}/${site.restApiPrefix || 'wp-json'}/`;
+// Now optionally takes credentials for session-based authentication.
+const createApiClient = (
+  site: Pick<SiteConfig, 'url'>, // Only needs URL from SiteConfig
+  authDetails?: SiteSessionAuth   // Optional session auth details
+): AxiosInstance => {
+  // Use a default REST API prefix; this might become configurable per session later.
+  const restApiPrefix = authDetails?.restApiPrefix || 'wp-json';
+  const baseURL = `${site.url.replace(/\/$/, '')}/${restApiPrefix}/`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
   let auth = undefined;
-  if (site.username && site.applicationPassword) {
-    // Prefer Application Password if available (works like Basic Auth header)
+  if (authDetails?.username && authDetails?.passwordOrAppPass) {
     auth = {
-      username: site.username,
-      password: site.applicationPassword,
+      username: authDetails.username,
+      password: authDetails.passwordOrAppPass,
     };
   }
-  // Later, add JWT or other auth methods here
 
   return axios.create({
     baseURL,
-    auth, // Axios handles Basic Auth encoding if username/password are provided
+    auth,
     headers,
-    timeout: 15000, // 15 seconds timeout
+    timeout: 15000,
   });
 };
 
 export const wordpressConnector = {
-  testConnection: async (siteConfig: SiteConfig): Promise<{ success: boolean; message: string; data?: WPUser }> => {
+  // testConnection now needs explicit credentials for the test.
+  // SiteConfig is used for URL and potentially other non-auth site details.
+  testConnection: async (
+    siteConfig: Pick<SiteConfig, 'url'>, // Only needs URL
+    authDetails: SiteSessionAuth         // Requires session auth details for test
+  ): Promise<{ success: boolean; message: string; data?: WPUser }> => {
     try {
-      // Ensure URL has a protocol
       let url = siteConfig.url;
       if (!/^https?:\/\//i.test(url)) {
-        url = 'https://' + url; // Default to HTTPS
+        url = 'https://' + url;
       }
-      const validatedSiteConfig = { ...siteConfig, url };
+      const siteForClient = { url }; // Use this for creating client and for messages
 
-      const apiClient = createApiClient(validatedSiteConfig);
+      // Create client WITH auth details for this test
+      const apiClient = createApiClient(siteForClient, authDetails);
 
-      // A good endpoint to test authentication is '/wp/v2/users/me'
-      // It requires authentication and returns the current user's details.
       const response = await apiClient.get<WPUser>('wp/v2/users/me', {
-        // Send a timestamp to try and bypass caching for tests
         params: { _: new Date().getTime() }
       });
 
       if (response.status === 200 && response.data && response.data.id) {
         return {
           success: true,
-          message: `Successfully connected to ${validatedSiteConfig.url} as ${response.data.name || validatedSiteConfig.username}.`,
+          message: `Successfully connected to ${siteForClient.url} as ${response.data.name || authDetails.username}.`,
           data: response.data,
         };
       } else {
@@ -87,7 +93,7 @@ export const wordpressConnector = {
           } else if (status === 403) {
             errorMessage = `Forbidden. ${serverMessage || 'The credentials may be correct but lack permissions for REST API access.'}`;
           } else if (status === 404) {
-            errorMessage = `API endpoint not found (404). ${serverMessage || `Check site URL, REST API prefix ('${siteConfig.restApiPrefix || 'wp-json'}'), and ensure REST API is enabled.`}`;
+            errorMessage = `API endpoint not found (404). ${serverMessage || `Check site URL, REST API prefix ('${authDetails.restApiPrefix || 'wp-json'}'), and ensure REST API is enabled.`}`;
           } else {
             errorMessage = serverMessage || `Server error: ${status} - ${axiosError.response.statusText}.`;
           }
@@ -114,11 +120,16 @@ export const wordpressConnector = {
   },
 
   // Example of a generic GET request
-  get: async <T>(siteId: string, endpoint: string, params?: Record<string, any>): Promise<T> => {
+  get: async <T>(
+    siteId: string,
+    authDetails: SiteSessionAuth, // Added authDetails
+    endpoint: string,
+    params?: Record<string, any>
+  ): Promise<T> => {
     const site = siteStore.getSiteById(siteId);
     if (!site) throw new Error(`Site with ID ${siteId} not found.`);
 
-    const apiClient = createApiClient(site);
+    const apiClient = createApiClient(site, authDetails); // Pass authDetails
     try {
       const response = await apiClient.get<T>(endpoint, { params });
       return response.data;
@@ -131,11 +142,16 @@ export const wordpressConnector = {
   },
 
   // Example of a generic POST request
-  post: async <T>(siteId: string, endpoint: string, data: Record<string, any>): Promise<T> => {
+  post: async <T>(
+    siteId: string,
+    authDetails: SiteSessionAuth, // Added authDetails
+    endpoint: string,
+    data: Record<string, any>
+  ): Promise<T> => {
     const site = siteStore.getSiteById(siteId);
     if (!site) throw new Error(`Site with ID ${siteId} not found.`);
 
-    const apiClient = createApiClient(site);
+    const apiClient = createApiClient(site, authDetails); // Pass authDetails
     try {
       const response = await apiClient.post<T>(endpoint, data);
       return response.data;
@@ -146,10 +162,15 @@ export const wordpressConnector = {
     }
   },
 
-  put: async <T>(siteId: string, endpoint: string, data: Record<string, any>): Promise<T> => {
+  put: async <T>(
+    siteId: string,
+    authDetails: SiteSessionAuth, // Added authDetails
+    endpoint: string,
+    data: Record<string, any>
+  ): Promise<T> => {
     const site = siteStore.getSiteById(siteId);
     if (!site) throw new Error(`Site with ID ${siteId} not found.`);
-    const apiClient = createApiClient(site);
+    const apiClient = createApiClient(site, authDetails); // Pass authDetails
     try {
       const response = await apiClient.put<T>(endpoint, data);
       return response.data;
@@ -160,13 +181,15 @@ export const wordpressConnector = {
     }
   },
 
-  delete: async <T>(siteId: string, endpoint: string): Promise<T> => {
+  delete: async <T>(
+    siteId: string,
+    authDetails: SiteSessionAuth, // Added authDetails
+    endpoint: string
+  ): Promise<T> => {
     const site = siteStore.getSiteById(siteId);
     if (!site) throw new Error(`Site with ID ${siteId} not found.`);
-    const apiClient = createApiClient(site);
+    const apiClient = createApiClient(site, authDetails); // Pass authDetails
     try {
-      // For delete, WP often returns the object that was deleted, or a specific structure.
-      // The generic <T> might need to be { previous: YourObjectType, deleted: true } etc. for some endpoints.
       const response = await apiClient.delete<T>(endpoint, { params: { force: true } });
       return response.data;
     } catch (error) {
@@ -177,38 +200,32 @@ export const wordpressConnector = {
   },
 
   // --- Post Specific Methods ---
-  getPosts: async (siteId: string, params?: Record<string, any>): Promise<WPPost[]> => {
-    // Default to fetch context=view, can be overridden by params
-    const defaultParams = { context: 'view', ...params };
-    return wordpressConnector.get<WPPost[]>(siteId, 'wp/v2/posts', defaultParams);
+  getPosts: async (siteId: string, authDetails: SiteSessionAuth, params?: Record<string, any>): Promise<WPPost[]> => {
+    const defaultParams = { context: 'view', ...params }; // context=edit is better for raw data
+    return wordpressConnector.get<WPPost[]>(siteId, authDetails, 'wp/v2/posts', defaultParams);
   },
 
-  getPost: async (siteId: string, postId: number, params?: Record<string, any>): Promise<WPPost> => {
+  getPost: async (siteId: string, authDetails: SiteSessionAuth, postId: number, params?: Record<string, any>): Promise<WPPost> => {
     const defaultParams = { context: 'view', ...params };
-    return wordpressConnector.get<WPPost>(siteId, `wp/v2/posts/${postId}`, defaultParams);
+    return wordpressConnector.get<WPPost>(siteId, authDetails, `wp/v2/posts/${postId}`, defaultParams);
   },
 
-  createPost: async (siteId: string, postData: WPPostCreatePayload): Promise<WPPost> => {
-    // Ensure status is provided, default to 'draft' if not.
+  createPost: async (siteId: string, authDetails: SiteSessionAuth, postData: WPPostCreatePayload): Promise<WPPost> => {
     const payload = { status: 'draft', ...postData };
-    return wordpressConnector.post<WPPost>(siteId, 'wp/v2/posts', payload);
+    return wordpressConnector.post<WPPost>(siteId, authDetails, 'wp/v2/posts', payload);
   },
 
-  updatePost: async (siteId: string, postId: number, postData: Partial<Omit<WPPostUpdatePayload, 'id'>>): Promise<WPPost> => {
-    return wordpressConnector.put<WPPost>(siteId, `wp/v2/posts/${postId}`, postData);
+  updatePost: async (siteId: string, authDetails: SiteSessionAuth, postId: number, postData: Partial<Omit<WPPostUpdatePayload, 'id'>>): Promise<WPPost> => {
+    return wordpressConnector.put<WPPost>(siteId, authDetails, `wp/v2/posts/${postId}`, postData);
   },
 
-  // Deleting a post can mean moving to trash or permanent deletion.
-  // WP REST API default for DELETE /wp/v2/posts/<id> is to trash.
-  // To permanently delete, add ?force=true.
-  // The response includes the trashed/deleted post object.
-  deletePost: async (siteId: string, postId: number, force = false): Promise<{ deleted: boolean; previous: WPPost }> => {
+  deletePost: async (siteId: string, authDetails: SiteSessionAuth, postId: number, force = false): Promise<{ deleted: boolean; previous: WPPost }> => {
     const site = siteStore.getSiteById(siteId);
     if (!site) throw new Error(`Site with ID ${siteId} not found.`);
-    const apiClient = createApiClient(site);
+    // For deletePost, we call createApiClient directly as it's a specific implementation of delete.
+    const apiClient = createApiClient(site, authDetails);
     try {
       const response = await apiClient.delete<{ deleted?: boolean; previous: WPPost }>(`wp/v2/posts/${postId}`, { params: { force } });
-      // If WP_TRASH is disabled on the WP site, `deleted` might not be in the response,
       // but `previous` (the deleted post object) usually is.
       // A 200 OK response generally means success.
       return { deleted: response.data.deleted || true, previous: response.data.previous };

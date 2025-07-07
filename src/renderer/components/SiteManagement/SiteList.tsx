@@ -49,7 +49,7 @@ const SiteList: React.FC<SiteListProps> = ({ sites, onEdit, onDelete /*, onSelec
               </ListItemIcon> */}
               <ListItemText
                 primary={site.name || site.url}
-                secondary={site.name ? site.url : `Username: ${site.username}`}
+                secondary={site.name ? site.url : site.url} // Display URL again if no name, remove username
               />
               <ListItemSecondaryAction>
                 <IconButton edge="end" aria-label="edit" onClick={() => onEdit(site)} sx={{mr: 0.5}}>

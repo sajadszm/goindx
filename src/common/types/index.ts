@@ -5,20 +5,20 @@ export interface UserPreferences {
 }
 
 export interface SiteConfig {
-  id: string; // Unique identifier (e.g., UUID or site URL hash)
+  id: string; // Unique identifier (e.g., UUID or site URL hash, generated from URL)
   url: string; // Full URL to the WordPress site (e.g., https://example.com)
-  username: string;
-  // Store applicationPassword here. For Basic Auth, this would be the regular password.
-  // It's named applicationPassword to encourage its use.
-  applicationPassword?: string;
-  // To distinguish if an application password is set vs. basic auth password (though we might just try both)
-  // authMethod: 'applicationPassword' | 'basic' | 'jwt'; // Could be added later
-  isCustomRestPrefix?: boolean; // if WP REST API prefix is not wp-json
-  restApiPrefix?: string; // e.g. 'wp-json' or custom
   name?: string; // Optional friendly name for the site
-  // lastChecked?: string; // ISO date string for last successful connection
-  // errorState?: string; // If there was an error connecting
+  // Credentials (username, password/appPassword) will now be handled per session, not stored here.
+  // restApiPrefix will also be handled per session or assumed default 'wp-json'.
 }
+
+// To store session-specific authentication data (not persisted with SiteConfig)
+export interface SiteSessionAuth {
+  username: string;
+  passwordOrAppPass: string; // User provides this at "login" for the site
+  restApiPrefix?: string; // Can be configured per session or default to 'wp-json'
+}
+
 
 export interface WPUser {
   id: number;
