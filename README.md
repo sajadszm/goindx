@@ -179,3 +179,135 @@ Notifications (daily tips, reminders, etc.) are sent by the `cron/send_notificat
 ---
 
 This guide should provide a solid starting point for deploying the bot. Specific paths and commands might vary slightly depending on the hosting provider's cPanel configuration.
+
+---
+# راهنمای راه‌اندازی ربات تلگرام زوج‌های ایرانی
+
+این راهنما شامل دستورالعمل‌هایی برای راه‌اندازی ربات تلگرام زوج‌های ایرانی بر روی محیط میزبانی مبتنی بر cPanel یا هر سروری با پشته LAMP است.
+
+## 1. الزامات سرور
+
+* **نسخه PHP:** نسخه ۸.۰ یا بالاتر.
+* **افزونه‌های PHP:** اطمینان حاصل کنید که افزونه‌های زیر فعال هستند:
+  * `pdo`
+  * `pdo_mysql` (یا درایور پایگاه‌داده‌ای که انتخاب کرده‌اید)
+  * `curl` (برای ارتباط با API تلگرام)
+  * `openssl` (برای رمزنگاری)
+  * `json` (برای کار با داده‌های JSON)
+  * `mbstring` (برای کار با رشته‌های چندبایتی، مهم برای متون فارسی)
+  * `date` (معمولاً به صورت پیش‌فرض فعال است؛ برای توابع منطقه زمانی و تاریخ)
+* **پایگاه‌داده:** MySQL 5.7+ یا MariaDB 10.2+.
+* **وب‌سرور:** Apache یا Nginx (یا هر سروری که توانایی اجرای فایل‌های PHP را داشته باشد).
+* **HTTPS:** داشتن گواهی معتبر SSL/TLS برای دامنه شما توسط تلگرام برای وبهوک‌ها **الزامی** است.
+
+## 2. استقرار کد
+
+1. **آپلود فایل‌ها:** تمام فایل‌های سورس کد ربات را به هاست خود آپلود کنید، معمولاً در یک زیرپوشه داخل `public_html` (مثلاً `public_html/flo_bot/`).
+   ساختار باید به شکل زیر باشد:
+
+   ```
+   your_domain_root/
+   ├── flo_bot/
+   │   ├── config/
+   │   ├── cron/
+   │   ├── public/
+   │   │   └── index.php          <-- نقطه ورود Webhook
+   │   ├── src/
+   │   ├── vendor/                (در صورت استفاده از Composer؛ در حال حاضر از autoloader اختصاصی PSR-4 استفاده می‌شود)
+   │   ├── AGENTS.md
+   │   ├── DEPLOYMENT.md          (این فایل)
+   │   └── ...                    (سایر فایل‌های ریشه در صورت وجود)
+   ```
+
+2. **سطوح دسترسی:** اطمینان حاصل کنید که وب‌سرور دسترسی خواندن به تمام فایل‌ها دارد، و دسترسی نوشتن به دایرکتوری‌های لاگ در صورت استفاده از لاگ‌فایل برقرار است (در حال حاضر، خطاها با استفاده از `error_log` ثبت می‌شوند که معمولاً در لاگ خطای PHP سرور ذخیره می‌گردند).
+
+## 3. تنظیم پایگاه‌داده
+
+1. **ایجاد پایگاه‌داده:** با استفاده از ابزار "MySQL Databases" در cPanel (یا ابزار مشابه):
+   * یک پایگاه‌داده جدید بسازید (مثلاً `yourcpaneluser_flobot`)
+   * یک کاربر پایگاه‌داده جدید بسازید (مثلاً `yourcpaneluser_flo_usr`)
+   * کاربر را به پایگاه‌داده اضافه کرده و **تمامی دسترسی‌ها (ALL PRIVILEGES)** را به او اعطا کنید. این اطلاعات را یادداشت کنید.
+
+2. **درون‌ریزی شِماهای جداول:** با استفاده از phpMyAdmin (از طریق cPanel) یا یک کلاینت MySQL، شِماهای SQL جداول مورد نیاز را درون‌ریزی کنید. دستورهای SQL در فایل اصلی آورده شده‌اند.
+
+## 4. پیکربندی
+
+فایل `config/config.php` را ویرایش کنید:
+
+* **`TELEGRAM_BOT_TOKEN`**: توکن واقعی ربات تلگرام خود را وارد کنید:
+  ```php
+  define('TELEGRAM_BOT_TOKEN', 'YOUR_TELEGRAM_BOT_TOKEN');
+  ```
+
+* **`ADMIN_TELEGRAM_ID`**: آی‌دی عددی تلگرام خود را وارد کنید برای دریافت اعلان‌های ادمین:
+  ```php
+  define('ADMIN_TELEGRAM_ID', 'YOUR_ADMIN_TELEGRAM_ID');
+  ```
+
+* **مشخصات پایگاه‌داده**: فیلدهای `DB_HOST`، `DB_NAME`، `DB_USER`، `DB_PASS` را مطابق بخش ۳ تنظیم کنید:
+  ```php
+  define('DB_HOST', 'localhost');
+  define('DB_NAME', 'yourcpaneluser_flobot');
+  define('DB_USER', 'yourcpaneluser_flo_usr');
+  define('DB_PASS', 'your_db_password');
+  ```
+
+* **`ENCRYPTION_KEY`**: یک کلید تصادفی ۳۲ بایتی تولید کرده و Base64 کنید. از طریق:
+  ```bash
+  php -r "echo base64_encode(random_bytes(32)) . "\n";"
+  ```
+  سپس:
+  ```php
+  define('ENCRYPTION_KEY', 'YOUR_BASE64_ENCODED_32_BYTE_RANDOM_KEY');
+  ```
+
+* **زرین‌پال (اختیاری):** فیلدهای `ZARINPAL_MERCHANT_ID` و `ZARINPAL_CALLBACK_URL` را هنگام اتصال پرداخت پر کنید.
+
+## 5. تنظیم وبهوک ربات تلگرام
+
+1. **آدرس وبهوک**: مثلاً:
+   ```
+   https://yourdomain.com/flo_bot/public/index.php
+   ```
+
+2. **ثبت وبهوک**:
+   ```
+   https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook?url=YOUR_WEBHOOK_URL
+   ```
+
+   مثال:
+   ```
+   https://api.telegram.org/bot123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11/setWebhook?url=https://yourdomain.com/flo_bot/public/index.php
+   ```
+
+3. **بررسی وبهوک (اختیاری)**:
+   ```
+   https://api.telegram.org/botYOUR_BOT_TOKEN/getWebhookInfo
+   ```
+
+## 6. تنظیم Cron Job برای ارسال اعلان
+
+1. در cPanel وارد بخش Cron Jobs شوید.
+
+2. ایجاد Cron Job جدید:
+   * تنظیم زمان اجرا: هر ساعت، دقیق ابتدای ساعت
+   * دستور اجرای PHP:
+     ```
+     /usr/local/bin/php /home/yourcpaneluser/public_html/flo_bot/cron/send_notifications.php >/dev/null 2>&1
+     ```
+
+   یا در حالت عادی:
+   ```
+   php /home/yourcpaneluser/public_html/flo_bot/cron/send_notifications.php
+   ```
+
+## 7. تست عملکرد
+
+* در تلگرام `/start` را برای ربات ارسال کنید.
+* مراحل ثبت‌نام، انتخاب نقش و سایر امکانات را بررسی کنید.
+* لاگ‌های خطای PHP و خروجی cron job را مانیتور کنید.
+
+---
+
+این راهنما نقطه شروع خوبی برای استقرار این ربات است. مسیرها و تنظیمات ممکن است بسته به کانفیگ هاست کمی متفاوت باشد.
+
