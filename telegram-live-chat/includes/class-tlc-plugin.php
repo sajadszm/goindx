@@ -159,6 +159,7 @@ class TLC_Plugin {
 
         $this->loader->add_action( 'admin_menu', $plugin_admin, 'add_plugin_admin_menu' );
         $this->loader->add_action( 'admin_init', $plugin_admin, 'register_settings' );
+        $this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_color_picker_assets' );
         // Example: $this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
         // Example: $this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
 
@@ -173,7 +174,7 @@ class TLC_Plugin {
      */
     private function define_public_hooks() {
 
-        $plugin_public = new TLC_Public( $this->get_plugin_name(), $this->get_version() );
+        $plugin_public = new TLC_Public( $this->get_plugin_name(), $this->get_version(), $this ); // Pass $this (TLC_Plugin instance)
 
         $this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_styles' );
         $this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_scripts' );
@@ -716,5 +717,70 @@ class TLC_Plugin {
             $ip = explode( ':', $ip )[0];
         }
         return sanitize_text_field($ip);
+    }
+
+    /**
+     * Check if current time is within defined work hours.
+     * Uses WordPress timezone.
+     * @return bool True if within work hours or if work hours not configured/enabled properly, false otherwise.
+     */
+    public function is_currently_within_work_hours() {
+        $work_hours_data = get_option(TLC_PLUGIN_PREFIX . 'work_hours');
+
+        if (empty($work_hours_data) || !is_array($work_hours_data)) {
+            return true; // If not configured, assume always online
+        }
+
+        // Get current time in WordPress timezone
+        $current_timestamp = current_time('timestamp');
+        $current_day_key = strtolower(wp_date('l', $current_timestamp)); // Monday, Tuesday...
+        $current_time_hm = wp_date('H:i', $current_timestamp); // HH:MM format
+
+        if (!isset($work_hours_data[$current_day_key])) {
+            return true; // Should not happen if defaults are set, but as a fallback
+        }
+
+        $day_settings = $work_hours_data[$current_day_key];
+
+        if (!isset($day_settings['is_open']) || $day_settings['is_open'] !== '1') {
+            return false; // Closed today
+        }
+
+        $open_time = $day_settings['open'];  // HH:MM
+        $close_time = $day_settings['close']; // HH:MM
+
+        // Compare times
+        if ($current_time_hm >= $open_time && $current_time_hm < $close_time) {
+            // Special case: if close_time is past midnight (e.g. 02:00), it means it's open from open_time to midnight OR 00:00 to close_time on the next day.
+            // For simplicity, this implementation assumes close_time is on the same day and open_time < close_time.
+            // If open_time is '22:00' and close_time is '02:00', this simple check fails.
+            // A more robust check would convert HH:MM to minutes from midnight or handle overnight shifts.
+            // For now, assuming standard day shifts.
+            return true;
+        }
+
+        // Simplistic overnight check (if close time is "earlier" than open time, e.g. 22:00 - 02:00)
+        // This isn't perfect because it doesn't consider the day change for the close time.
+        // A truly robust solution involves comparing full datetime objects or minutes since week start.
+        // For this iteration, we'll stick to same-day comparison. If close_time < open_time, it means overnight.
+        // The current logic `current < close` would fail if `close` is e.g. `02:00` and `current` is `23:00`.
+        // Let's refine:
+        // If open_time < close_time (standard day shift, e.g., 09:00-17:00)
+        //    is_open = (current_time >= open_time && current_time < close_time)
+        // If open_time > close_time (overnight shift, e.g., 22:00-06:00)
+        //    is_open = (current_time >= open_time || current_time < close_time)
+
+        if (strtotime($open_time) > strtotime($close_time)) { // Overnight shift
+            if ($current_time_hm >= $open_time || $current_time_hm < $close_time) {
+                return true;
+            }
+        } else { // Same day shift
+            if ($current_time_hm >= $open_time && $current_time_hm < $close_time) {
+                return true;
+            }
+        }
+
+
+        return false;
     }
 }

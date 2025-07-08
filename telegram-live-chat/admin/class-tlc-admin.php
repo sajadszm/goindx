@@ -227,6 +227,192 @@ class TLC_Admin {
             TLC_PLUGIN_PREFIX . 'telegram_polling_section'
         );
 
+        // Section for Widget Customization
+        add_settings_section(
+            TLC_PLUGIN_PREFIX . 'widget_customization_section',
+            __( 'Widget Customization', 'telegram-live-chat' ),
+            array( $this, 'render_widget_customization_section_info' ),
+            $this->plugin_name // Display on the main settings page
+        );
+
+        // Define color settings
+        $color_settings = array(
+            'widget_header_bg_color' => array('label' => __('Header Background Color', 'telegram-live-chat'), 'default' => '#0073aa'),
+            'widget_header_text_color' => array('label' => __('Header Text Color', 'telegram-live-chat'), 'default' => '#ffffff'),
+            'chat_button_bg_color' => array('label' => __('Chat Button Background Color', 'telegram-live-chat'), 'default' => '#0088cc'),
+            'chat_button_icon_color' => array('label' => __('Chat Button Icon Color', 'telegram-live-chat'), 'default' => '#ffffff'),
+            'visitor_msg_bg_color' => array('label' => __('Visitor Message Background', 'telegram-live-chat'), 'default' => '#dcf8c6'),
+            'visitor_msg_text_color' => array('label' => __('Visitor Message Text', 'telegram-live-chat'), 'default' => '#000000'),
+            'agent_msg_bg_color' => array('label' => __('Agent Message Background', 'telegram-live-chat'), 'default' => '#e0e0e0'),
+            'agent_msg_text_color' => array('label' => __('Agent Message Text', 'telegram-live-chat'), 'default' => '#000000'),
+        );
+
+        foreach ($color_settings as $option_key => $details) {
+            $full_option_name = TLC_PLUGIN_PREFIX . $option_key;
+            register_setting(
+                $settings_group,
+                $full_option_name,
+                array($this, 'sanitize_hex_color')
+            );
+            add_settings_field(
+                $full_option_name,
+                $details['label'],
+                array($this, 'render_color_picker_field'),
+                $this->plugin_name,
+                TLC_PLUGIN_PREFIX . 'widget_customization_section',
+                array(
+                    'option_name' => $full_option_name,
+                    'default'     => $details['default'],
+                )
+            );
+        }
+
+        // Text Options
+        $text_options = array(
+            'widget_header_title' => array('label' => __('Widget Header Title', 'telegram-live-chat'), 'type' => 'text', 'default' => 'Live Chat', 'sanitize_callback' => 'sanitize_text_field'),
+            'widget_welcome_message' => array('label' => __('Welcome Message', 'telegram-live-chat'), 'type' => 'textarea', 'default' => 'Welcome! How can we help you today?', 'sanitize_callback' => 'sanitize_textarea_field'),
+            'widget_offline_message' => array('label' => __('Offline Message', 'telegram-live-chat'), 'type' => 'textarea', 'default' => "We're currently offline. Please leave a message!", 'sanitize_callback' => 'sanitize_textarea_field'),
+        );
+
+        foreach ($text_options as $option_key => $details) {
+            $full_option_name = TLC_PLUGIN_PREFIX . $option_key;
+            register_setting($settings_group, $full_option_name, array($this, $details['sanitize_callback']));
+            add_settings_field(
+                $full_option_name, $details['label'], array($this, 'render_text_input_field'), $this->plugin_name,
+                TLC_PLUGIN_PREFIX . 'widget_customization_section',
+                array('option_name' => $full_option_name, 'default' => $details['default'], 'type' => $details['type'])
+            );
+        }
+
+        // Display Options
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'widget_position', array($this, 'sanitize_widget_position'));
+        add_settings_field( TLC_PLUGIN_PREFIX . 'widget_position', __('Widget Position', 'telegram-live-chat'), array($this, 'render_select_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'widget_customization_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'widget_position', 'default' => 'bottom_right', 'options' => array('bottom_right' => 'Bottom Right', 'bottom_left' => 'Bottom Left'))
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'widget_icon_shape', array($this, 'sanitize_icon_shape'));
+        add_settings_field( TLC_PLUGIN_PREFIX . 'widget_icon_shape', __('Chat Button Icon Shape', 'telegram-live-chat'), array($this, 'render_select_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'widget_customization_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'widget_icon_shape', 'default' => 'circle', 'options' => array('circle' => 'Circle', 'square' => 'Square'))
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'widget_hide_desktop', array($this, 'sanitize_checkbox'));
+        add_settings_field( TLC_PLUGIN_PREFIX . 'widget_hide_desktop', __('Hide Chat Button on Desktop', 'telegram-live-chat'), array($this, 'render_checkbox_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'widget_customization_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'widget_hide_desktop', 'label_for_field' => __('Hide on desktop screens wider than 768px.', 'telegram-live-chat'))
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'widget_hide_mobile', array($this, 'sanitize_checkbox'));
+        add_settings_field( TLC_PLUGIN_PREFIX . 'widget_hide_mobile', __('Hide Chat Button on Mobile', 'telegram-live-chat'), array($this, 'render_checkbox_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'widget_customization_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'widget_hide_mobile', 'label_for_field' => __('Hide on mobile screens narrower than 768px.', 'telegram-live-chat'))
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'widget_custom_css', array($this, 'sanitize_custom_css'));
+        add_settings_field( TLC_PLUGIN_PREFIX . 'widget_custom_css', __('Custom CSS', 'telegram-live-chat'), array($this, 'render_textarea_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'widget_customization_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'widget_custom_css', 'default' => '', 'rows' => 5, 'description' => __('Add your own CSS rules for the chat widget. Use with caution.', 'telegram-live-chat'))
+        );
+
+        // Section for Automated Messages
+        add_settings_section(
+            TLC_PLUGIN_PREFIX . 'auto_messages_section',
+            __( 'Automated Messages', 'telegram-live-chat' ),
+            array( $this, 'render_auto_messages_section_info' ),
+            $this->plugin_name
+        );
+
+        // Fields for the first (and only, for now) auto-message
+        $auto_msg_prefix = TLC_PLUGIN_PREFIX . 'auto_msg_1_';
+
+        register_setting($settings_group, $auto_msg_prefix . 'enable', array($this, 'sanitize_checkbox'));
+        add_settings_field($auto_msg_prefix . 'enable', __('Enable Automated Message', 'telegram-live-chat'), array($this, 'render_checkbox_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'auto_messages_section',
+            array('option_name' => $auto_msg_prefix . 'enable', 'label_for_field' => __('Enable this automated message', 'telegram-live-chat'))
+        );
+
+        register_setting($settings_group, $auto_msg_prefix . 'text', array($this, 'sanitize_textarea_field'));
+        add_settings_field($auto_msg_prefix . 'text', __('Message Text', 'telegram-live-chat'), array($this, 'render_textarea_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'auto_messages_section',
+            array('option_name' => $auto_msg_prefix . 'text', 'default' => 'Hello! Can I help you with anything?', 'rows' => 3)
+        );
+
+        register_setting($settings_group, $auto_msg_prefix . 'trigger_type', array($this, 'sanitize_auto_msg_trigger_type'));
+        add_settings_field($auto_msg_prefix . 'trigger_type', __('Trigger Type', 'telegram-live-chat'), array($this, 'render_select_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'auto_messages_section',
+            array('option_name' => $auto_msg_prefix . 'trigger_type', 'default' => 'time_on_page',
+                  'options' => array('time_on_page' => 'Time on Page', 'scroll_depth' => 'Scroll Depth'))
+        );
+
+        register_setting($settings_group, $auto_msg_prefix . 'trigger_value', array($this, 'sanitize_absint'));
+        add_settings_field($auto_msg_prefix . 'trigger_value', __('Trigger Value', 'telegram-live-chat'), array($this, 'render_text_input_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'auto_messages_section',
+            array('option_name' => $auto_msg_prefix . 'trigger_value', 'default' => '30', 'type' => 'number', 'description' => __('Seconds for Time on Page, or % for Scroll Depth.', 'telegram-live-chat'))
+        );
+
+        register_setting($settings_group, $auto_msg_prefix . 'page_targeting', array($this, 'sanitize_page_targeting_type'));
+        add_settings_field($auto_msg_prefix . 'page_targeting', __('Page Targeting', 'telegram-live-chat'), array($this, 'render_select_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'auto_messages_section',
+            array('option_name' => $auto_msg_prefix . 'page_targeting', 'default' => 'all_pages',
+                  'options' => array('all_pages' => 'All Pages', 'specific_urls' => 'Specific URL(s)'))
+        );
+
+        register_setting($settings_group, $auto_msg_prefix . 'specific_urls', array($this, 'sanitize_textarea_field')); // URLs will be comma-separated
+        add_settings_field($auto_msg_prefix . 'specific_urls', __('Specific URLs (if selected)', 'telegram-live-chat'), array($this, 'render_textarea_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'auto_messages_section',
+            array('option_name' => $auto_msg_prefix . 'specific_urls', 'default' => '', 'rows' => 3, 'description' => __('Enter full URLs, one per line or comma-separated. Only applies if "Specific URL(s)" is chosen for Page Targeting.', 'telegram-live-chat'))
+        );
+
+        // Section for Work Hours
+        add_settings_section(
+            TLC_PLUGIN_PREFIX . 'work_hours_section',
+            __( 'Work Hours & Offline Mode', 'telegram-live-chat' ),
+            array( $this, 'render_work_hours_section_info' ),
+            $this->plugin_name
+        );
+
+        add_settings_field(
+            TLC_PLUGIN_PREFIX . 'work_hours_timezone_display', // Not a saved option, just for display
+            __( 'Site Timezone', 'telegram-live-chat'),
+            array( $this, 'render_timezone_display_field'),
+            $this->plugin_name,
+            TLC_PLUGIN_PREFIX . 'work_hours_section'
+        );
+
+        // Work Hours settings for each day
+        $days_of_week = array(
+            'monday'    => __('Monday', 'telegram-live-chat'),
+            'tuesday'   => __('Tuesday', 'telegram-live-chat'),
+            'wednesday' => __('Wednesday', 'telegram-live-chat'),
+            'thursday'  => __('Thursday', 'telegram-live-chat'),
+            'friday'    => __('Friday', 'telegram-live-chat'),
+            'saturday'  => __('Saturday', 'telegram-live-chat'),
+            'sunday'    => __('Sunday', 'telegram-live-chat'),
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'work_hours', array($this, 'sanitize_work_hours'));
+
+        foreach ($days_of_week as $day_key => $day_label) {
+            add_settings_field(
+                TLC_PLUGIN_PREFIX . 'work_hours_' . $day_key,
+                $day_label,
+                array($this, 'render_work_day_field'),
+                $this->plugin_name,
+                TLC_PLUGIN_PREFIX . 'work_hours_section',
+                array('day_key' => $day_key)
+            );
+        }
+
+        // Offline Behavior
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'offline_behavior', array($this, 'sanitize_offline_behavior'));
+        add_settings_field(
+            TLC_PLUGIN_PREFIX . 'offline_behavior',
+            __('Offline Behavior', 'telegram-live-chat'),
+            array($this, 'render_select_field'),
+            $this->plugin_name,
+            TLC_PLUGIN_PREFIX . 'work_hours_section',
+            array(
+                'option_name' => TLC_PLUGIN_PREFIX . 'offline_behavior',
+                'default'     => 'show_offline_message',
+                'options'     => array(
+                    'show_offline_message' => __('Show Offline Message in Widget', 'telegram-live-chat'),
+                    'hide_widget'          => __('Hide Chat Widget Completely', 'telegram-live-chat'),
+                ),
+                'description' => __('Choose how the chat widget behaves when outside of work hours. The "Offline Message" itself is configured under Widget Customization.', 'telegram-live-chat')
+            )
+        );
+
+
         // Section for Uninstall Settings
         add_settings_section(
             TLC_PLUGIN_PREFIX . 'general_settings_section',
@@ -238,7 +424,7 @@ class TLC_Admin {
         add_settings_field(
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall',
             __( 'Data Cleanup on Uninstall', 'telegram-live-chat' ),
-            array( $this, 'render_cleanup_on_uninstall_field' ),
+            array( $this, 'render_cleanup_on_uninstall_field' ), // This method exists
             $this->plugin_name,
             TLC_PLUGIN_PREFIX . 'general_settings_section'
         );
@@ -417,5 +603,321 @@ class TLC_Admin {
             return $input;
         }
         return '30_seconds'; // Default if invalid input
+    }
+
+    /**
+     * Render the description for the Widget Customization section.
+     */
+    public function render_widget_customization_section_info() {
+        echo '<p>' . __( 'Customize the appearance and text of the chat widget.', 'telegram-live-chat' ) . '</p>';
+    }
+
+    /**
+     * Sanitize hex color.
+     * @param string $color
+     * @return string
+     */
+    public function sanitize_hex_color( $color ) {
+        if ( '' === $color ) {
+            return '';
+        }
+        // Check if string is a valid hex color.
+        if ( preg_match( '/^#([a-f0-9]{6}|[a-f0-9]{3})$/i', $color ) ) {
+            return $color;
+        }
+        return null; // Or return a default color, or add_settings_error()
+    }
+
+    /**
+     * Render a color picker field.
+     * @param array $args Field arguments.
+     */
+    public function render_color_picker_field( $args ) {
+        $option_name = $args['option_name'];
+        $default_color = $args['default'];
+        $value = get_option( $option_name, $default_color );
+        printf(
+            '<input type="text" id="%s" name="%s" value="%s" class="tlc-color-picker" data-default-color="%s" />',
+            esc_attr( $option_name ),
+            esc_attr( $option_name ),
+            esc_attr( $value ),
+            esc_attr( $default_color )
+        );
+    }
+
+    /**
+     * Render a generic text input or textarea field.
+     * @param array $args Field arguments.
+     */
+    public function render_text_input_field( $args ) {
+        $option_name = $args['option_name'];
+        $default_value = $args['default'];
+        $type = isset($args['type']) && $args['type'] === 'textarea' ? 'textarea' : 'text';
+        $value = get_option( $option_name, $default_value );
+
+        if ($type === 'textarea') {
+            $rows = isset($args['rows']) ? $args['rows'] : 3;
+            printf(
+                '<textarea id="%s" name="%s" rows="%d" class="large-text code">%s</textarea>',
+                esc_attr( $option_name ),
+                esc_attr( $option_name ),
+                esc_attr( $rows ),
+                esc_textarea( $value )
+            );
+        } else {
+            printf(
+                '<input type="text" id="%s" name="%s" value="%s" class="regular-text" />',
+                esc_attr( $option_name ),
+                esc_attr( $option_name ),
+                esc_attr( $value )
+            );
+        }
+        if (!empty($args['description'])) {
+            echo '<p class="description">' . esc_html($args['description']) . '</p>';
+        }
+    }
+
+    /**
+     * Render a generic textarea field. (Specific for custom CSS if needed, or use render_text_input_field)
+     * @param array $args Field arguments.
+     */
+    public function render_textarea_field( $args ) {
+        $option_name = $args['option_name'];
+        $default_value = $args['default'];
+        $value = get_option( $option_name, $default_value );
+        $rows = isset($args['rows']) ? $args['rows'] : 5;
+         printf(
+            '<textarea id="%s" name="%s" rows="%d" class="large-text code" placeholder="%s">%s</textarea>',
+            esc_attr( $option_name ),
+            esc_attr( $option_name ),
+            esc_attr( $rows ),
+            isset($args['placeholder']) ? esc_attr($args['placeholder']) : '',
+            esc_textarea( $value )
+        );
+        if (!empty($args['description'])) {
+            echo '<p class="description">' . esc_html($args['description']) . '</p>';
+        }
+    }
+
+
+    /**
+     * Render a select field.
+     * @param array $args Field arguments.
+     */
+    public function render_select_field( $args ) {
+        $option_name = $args['option_name'];
+        $default_value = $args['default'];
+        $options = $args['options'];
+        $current_value = get_option( $option_name, $default_value );
+
+        echo "<select id='" . esc_attr( $option_name ) . "' name='" . esc_attr( $option_name ) . "'>";
+        foreach ( $options as $value => $label ) {
+            echo "<option value='" . esc_attr( $value ) . "' " . selected( $current_value, $value, false ) . ">" . esc_html( $label ) . "</option>";
+        }
+        echo "</select>";
+        if (!empty($args['description'])) {
+            echo '<p class="description">' . esc_html($args['description']) . '</p>';
+        }
+    }
+
+    /**
+     * Render a checkbox field.
+     * (Similar to render_cleanup_on_uninstall_field but more generic)
+     * @param array $args Field arguments.
+     */
+    public function render_checkbox_field( $args ) {
+        $option_name = $args['option_name'];
+        $checked = get_option( $option_name, isset($args['default']) ? $args['default'] : '' );
+        $label_for_field = isset($args['label_for_field']) ? $args['label_for_field'] : '';
+
+        printf(
+            '<input type="checkbox" id="%s" name="%s" value="1" %s />',
+            esc_attr( $option_name ),
+            esc_attr( $option_name ),
+            checked( $checked, '1', false )
+        );
+        if ($label_for_field) {
+            echo '<label for="' . esc_attr( $option_name ) . '"> ' . esc_html( $label_for_field ) . '</label>';
+        }
+         if (!empty($args['description'])) {
+            echo '<p class="description">' . esc_html($args['description']) . '</p>';
+        }
+    }
+
+    // Sanitization functions for new types
+    public function sanitize_widget_position( $input ) {
+        $valid_options = array( 'bottom_right', 'bottom_left' );
+        return in_array( $input, $valid_options, true ) ? $input : 'bottom_right';
+    }
+
+    public function sanitize_icon_shape( $input ) {
+        $valid_options = array( 'circle', 'square' );
+        return in_array( $input, $valid_options, true ) ? $input : 'circle';
+    }
+
+    public function sanitize_custom_css( $input ) {
+        // Sanitize CSS input, allowing valid CSS but preventing XSS.
+        // WordPress's `wp_strip_all_tags` might be too aggressive.
+        // `safecss_filter_attr` is for inline styles.
+        // For a block of CSS, we should allow valid CSS properties and selectors.
+        // A more robust solution might involve a CSS parser/validator.
+        // For now, just ensure it's valid UTF-8 and strip dangerous tags if any somehow got in.
+        $input = wp_check_invalid_utf8( $input );
+        $input = wp_strip_all_tags( $input ); // This will remove style tags too, which is fine.
+        return $input; // Consider using wp_kses_post or a custom kses for CSS if more control is needed.
+    }
+
+    /**
+     * Render the description for the Automated Messages section.
+     */
+    public function render_auto_messages_section_info() {
+        echo '<p>' . __( 'Configure a message to be automatically sent to visitors based on certain triggers. For now, one automated message can be configured.', 'telegram-live-chat' ) . '</p>';
+    }
+
+    // We already have sanitize_text_field and sanitize_checkbox.
+    // WordPress core `sanitize_textarea_field` can be used directly or wrapped.
+    // For consistency, if we used array($this, 'sanitize_textarea_field') in register_setting, we'd need it here.
+    // The plan was: 'sanitize_callback' => 'sanitize_textarea_field'. This implies it's a method of $this.
+    // So, let's add a wrapper for it.
+    public function sanitize_textarea_field( $input ) {
+        return sanitize_textarea_field( $input );
+    }
+
+    public function sanitize_auto_msg_trigger_type( $input ) {
+        $valid_options = array( 'time_on_page', 'scroll_depth' );
+        return in_array( $input, $valid_options, true ) ? $input : 'time_on_page';
+    }
+
+    public function sanitize_absint( $input ) {
+        return absint( $input );
+    }
+
+    public function sanitize_page_targeting_type( $input ) {
+        $valid_options = array( 'all_pages', 'specific_urls' );
+        return in_array( $input, $valid_options, true ) ? $input : 'all_pages';
+    }
+
+    /**
+     * Render the description for the Work Hours section.
+     */
+    public function render_work_hours_section_info() {
+        echo '<p>' . __( 'Define your support availability. The widget can change behavior based on these hours. Uses your WordPress site timezone.', 'telegram-live-chat' ) . '</p>';
+    }
+
+    /**
+     * Render the timezone display field.
+     */
+    public function render_timezone_display_field() {
+        $timezone_string = get_option( 'timezone_string' );
+        if ( empty( $timezone_string ) ) {
+            $offset  = get_option( 'gmt_offset' );
+            $timezone_string = sprintf('UTC%+d', $offset);
+            if ($offset > 0 && floor($offset) != $offset) { // Check for .5 offsets
+                 $timezone_string = sprintf('UTC%+0.1f', $offset);
+            }
+        }
+        echo '<code>' . esc_html( $timezone_string ) . '</code>';
+        echo '<p class="description">' . sprintf( __( 'This plugin uses your <a href="%s">WordPress timezone setting</a>. Current server time: %s.', 'telegram-live-chat' ), admin_url( 'options-general.php' ), current_time('mysql') . ' (' . $timezone_string . ')' ) . '</p>';
+    }
+
+    /**
+     * Render work day field (checkbox, open time, close time).
+     * @param array $args Field arguments containing 'day_key'.
+     */
+    public function render_work_day_field( $args ) {
+        $day_key = $args['day_key'];
+        $option_name_base = TLC_PLUGIN_PREFIX . 'work_hours';
+        $work_hours = get_option( $option_name_base, array() );
+
+        $is_open    = isset( $work_hours[$day_key]['is_open'] ) ? $work_hours[$day_key]['is_open'] : '0'; // Default to closed
+        $open_time  = isset( $work_hours[$day_key]['open'] ) ? $work_hours[$day_key]['open'] : '09:00';
+        $close_time = isset( $work_hours[$day_key]['close'] ) ? $work_hours[$day_key]['close'] : '17:00';
+
+        printf( '<input type="checkbox" name="%s[%s][is_open]" value="1" %s /> %s ',
+            esc_attr($option_name_base), esc_attr($day_key), checked($is_open, '1', false), __('Open', 'telegram-live-chat')
+        );
+
+        echo __('From', 'telegram-live-chat') . ' ';
+        echo $this->generate_time_select( $option_name_base . '[' . $day_key . '][open]', $open_time );
+
+        echo ' ' . __('To', 'telegram-live-chat') . ' ';
+        echo $this->generate_time_select( $option_name_base . '[' . $day_key . '][close]', $close_time );
+    }
+
+    /**
+     * Generate HTML for a time select dropdown (HH:MM).
+     * @param string $name The name attribute for the select.
+     * @param string $current_value The current HH:MM value.
+     * @return string HTML select element.
+     */
+    private function generate_time_select( $name, $current_value ) {
+        $html = "<select name='" . esc_attr( $name ) . "'>";
+        for ( $h = 0; $h < 24; $h++ ) {
+            for ( $m = 0; $m < 60; $m += 15 ) { // 15-minute intervals
+                $time_val = sprintf( '%02d:%02d', $h, $m );
+                $html .= "<option value='" . esc_attr( $time_val ) . "' " . selected( $current_value, $time_val, false ) . ">" . esc_html( $time_val ) . "</option>";
+            }
+        }
+        $html .= "</select>";
+        return $html;
+    }
+
+    /**
+     * Sanitize work hours array.
+     * @param array $input
+     * @return array
+     */
+    public function sanitize_work_hours( $input ) {
+        $sanitized_hours = array();
+        $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
+        $time_regex = '/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/'; // HH:MM format
+
+        foreach ($days as $day) {
+            if (isset($input[$day])) {
+                $sanitized_hours[$day]['is_open'] = isset($input[$day]['is_open']) ? '1' : '0';
+                $sanitized_hours[$day]['open'] = (isset($input[$day]['open']) && preg_match($time_regex, $input[$day]['open'])) ? $input[$day]['open'] : '09:00';
+                $sanitized_hours[$day]['close'] = (isset($input[$day]['close']) && preg_match($time_regex, $input[$day]['close'])) ? $input[$day]['close'] : '17:00';
+            } else { // Ensure all days are present with defaults if not submitted (e.g. all checkboxes off)
+                 $sanitized_hours[$day]['is_open'] = '0';
+                 $sanitized_hours[$day]['open'] = '09:00';
+                 $sanitized_hours[$day]['close'] = '17:00';
+            }
+        }
+        return $sanitized_hours;
+    }
+
+    /**
+     * Sanitize offline behavior setting.
+     * @param string $input
+     * @return string
+     */
+    public function sanitize_offline_behavior( $input ) {
+        $valid_options = array( 'show_offline_message', 'hide_widget' );
+        return in_array( $input, $valid_options, true ) ? $input : 'show_offline_message';
+    }
+
+
+    /**
+     * Enqueue styles and scripts for WP Color Picker.
+     *
+     * @since 0.3.0
+     * @param string $hook_suffix The current admin page.
+     */
+    public function enqueue_color_picker_assets( $hook_suffix ) {
+        // Only load on our plugin's main settings page.
+        // The hook for the main page is 'toplevel_page_{menu_slug}'
+        // $this->plugin_name is 'telegram-live-chat' (which is the menu_slug for the main page)
+        if ( 'toplevel_page_' . $this->plugin_name !== $hook_suffix ) {
+            return;
+        }
+
+        wp_enqueue_style( 'wp-color-picker' );
+        wp_enqueue_script(
+            $this->plugin_name . '-admin-color-picker',
+            plugin_dir_url( __FILE__ ) . 'js/tlc-admin-color-picker.js',
+            array( 'wp-color-picker', 'jquery' ),
+            $this->version,
+            true
+        );
     }
 }

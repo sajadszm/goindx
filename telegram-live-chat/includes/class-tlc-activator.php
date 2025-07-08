@@ -81,9 +81,48 @@ class TLC_Activator {
             TLC_PLUGIN_PREFIX . 'bot_token' => '',
             TLC_PLUGIN_PREFIX . 'admin_user_ids' => '',
             TLC_PLUGIN_PREFIX . 'telegram_chat_id_group' => '',
-            TLC_PLUGIN_PREFIX . 'enable_telegram_polling' => false, // Default to disabled
-            TLC_PLUGIN_PREFIX . 'polling_interval' => '30_seconds', // Default interval
-            TLC_PLUGIN_PREFIX . 'last_telegram_update_id' => 0, // For tracking polled updates
+            TLC_PLUGIN_PREFIX . 'enable_telegram_polling' => false,
+            TLC_PLUGIN_PREFIX . 'polling_interval' => '30_seconds',
+            TLC_PLUGIN_PREFIX . 'last_telegram_update_id' => 0,
+
+            // Widget Customization Defaults
+            TLC_PLUGIN_PREFIX . 'widget_header_bg_color' => '#0073aa',
+            TLC_PLUGIN_PREFIX . 'widget_header_text_color' => '#ffffff',
+            TLC_PLUGIN_PREFIX . 'chat_button_bg_color' => '#0088cc',
+            TLC_PLUGIN_PREFIX . 'chat_button_icon_color' => '#ffffff',
+            TLC_PLUGIN_PREFIX . 'visitor_msg_bg_color' => '#dcf8c6',
+            TLC_PLUGIN_PREFIX . 'visitor_msg_text_color' => '#000000',
+            TLC_PLUGIN_PREFIX . 'agent_msg_bg_color' => '#e0e0e0',
+            TLC_PLUGIN_PREFIX . 'agent_msg_text_color' => '#000000',
+            TLC_PLUGIN_PREFIX . 'widget_header_title' => 'Live Chat',
+            TLC_PLUGIN_PREFIX . 'widget_welcome_message' => 'Welcome! How can we help you today?',
+            TLC_PLUGIN_PREFIX . 'widget_offline_message' => "We're currently offline. Please leave a message!",
+            TLC_PLUGIN_PREFIX . 'widget_position' => 'bottom_right',
+            TLC_PLUGIN_PREFIX . 'widget_icon_shape' => 'circle',
+            TLC_PLUGIN_PREFIX . 'widget_hide_desktop' => false,
+            TLC_PLUGIN_PREFIX . 'widget_hide_mobile' => false,
+            TLC_PLUGIN_PREFIX . 'widget_custom_css' => '',
+
+            // Auto Message 1 Defaults
+            TLC_PLUGIN_PREFIX . 'auto_msg_1_enable' => false,
+            TLC_PLUGIN_PREFIX . 'auto_msg_1_text' => 'Hello! Can I help you with anything?',
+            TLC_PLUGIN_PREFIX . 'auto_msg_1_trigger_type' => 'time_on_page',
+            TLC_PLUGIN_PREFIX . 'auto_msg_1_trigger_value' => 30,
+            TLC_PLUGIN_PREFIX . 'auto_msg_1_page_targeting' => 'all_pages',
+            TLC_PLUGIN_PREFIX . 'auto_msg_1_specific_urls' => '',
+
+            // Work Hours Defaults
+            TLC_PLUGIN_PREFIX . 'work_hours' => array(
+                'monday'    => array('is_open' => '1', 'open' => '09:00', 'close' => '17:00'),
+                'tuesday'   => array('is_open' => '1', 'open' => '09:00', 'close' => '17:00'),
+                'wednesday' => array('is_open' => '1', 'open' => '09:00', 'close' => '17:00'),
+                'thursday'  => array('is_open' => '1', 'open' => '09:00', 'close' => '17:00'),
+                'friday'    => array('is_open' => '1', 'open' => '09:00', 'close' => '17:00'),
+                'saturday'  => array('is_open' => '0', 'open' => '09:00', 'close' => '17:00'),
+                'sunday'    => array('is_open' => '0', 'open' => '09:00', 'close' => '17:00'),
+            ),
+            TLC_PLUGIN_PREFIX . 'offline_behavior' => 'show_offline_message',
+
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
             // Add more default options here as needed
         );

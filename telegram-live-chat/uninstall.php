@@ -37,6 +37,37 @@ if ( $remove_data ) {
     delete_option('tlc_enable_telegram_polling');
     delete_option('tlc_polling_interval');
     delete_option('tlc_last_telegram_update_id');
+
+    // Widget Customization Options
+    delete_option('tlc_widget_header_bg_color');
+    delete_option('tlc_widget_header_text_color');
+    delete_option('tlc_chat_button_bg_color');
+    delete_option('tlc_chat_button_icon_color');
+    delete_option('tlc_visitor_msg_bg_color');
+    delete_option('tlc_visitor_msg_text_color');
+    delete_option('tlc_agent_msg_bg_color');
+    delete_option('tlc_agent_msg_text_color');
+    delete_option('tlc_widget_header_title');
+    delete_option('tlc_widget_welcome_message');
+    delete_option('tlc_widget_offline_message');
+    delete_option('tlc_widget_position');
+    delete_option('tlc_widget_icon_shape');
+    delete_option('tlc_widget_hide_desktop');
+    delete_option('tlc_widget_hide_mobile');
+    delete_option('tlc_widget_custom_css');
+
+    // Auto Message 1 Options
+    delete_option('tlc_auto_msg_1_enable');
+    delete_option('tlc_auto_msg_1_text');
+    delete_option('tlc_auto_msg_1_trigger_type');
+    delete_option('tlc_auto_msg_1_trigger_value');
+    delete_option('tlc_auto_msg_1_page_targeting');
+    delete_option('tlc_auto_msg_1_specific_urls');
+
+    // Work Hours Options
+    delete_option('tlc_work_hours');
+    delete_option('tlc_offline_behavior');
+
     delete_option('tlc_enable_cleanup_on_uninstall'); // Also delete the option itself
 
     // Remove custom database tables

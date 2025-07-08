@@ -206,6 +206,82 @@
             startPolling();
         }
 
+        // Automated Message Logic
+        // =========================
+        const autoMsgSettings = tlc_public_ajax.auto_message_settings;
+        const autoMsgSessionKey = 'tlc_auto_msg_1_shown_session';
+
+        function checkAndTriggerAutoMessage() {
+            if (!autoMsgSettings || !autoMsgSettings.enable) {
+                return;
+            }
+
+            // Throttling: Show only once per session
+            if (sessionStorage.getItem(autoMsgSessionKey)) {
+                return;
+            }
+
+            // Page Targeting
+            if (autoMsgSettings.page_targeting === 'specific_urls') {
+                let onTargetPage = false;
+                const currentPage = window.location.href;
+                if (autoMsgSettings.specific_urls_array && autoMsgSettings.specific_urls_array.length > 0) {
+                    for (const url of autoMsgSettings.specific_urls_array) {
+                        // Simple check: if current URL contains the specified string.
+                        // For more robust matching, regex or more complex logic might be needed.
+                        if (currentPage.includes(url.trim())) {
+                            onTargetPage = true;
+                            break;
+                        }
+                    }
+                }
+                if (!onTargetPage) {
+                    return;
+                }
+            }
+            // User Login Status targeting (is_user_logged_in available in tlc_public_ajax) - not implemented in this simplified step
+
+            // Trigger specific logic
+            if (autoMsgSettings.trigger_type === 'time_on_page') {
+                setTimeout(function() {
+                    showAutoMessage();
+                }, autoMsgSettings.trigger_value * 1000); // Convert seconds to ms
+            } else if (autoMsgSettings.trigger_type === 'scroll_depth') {
+                let scrollTriggered = false;
+                $(window).on('scroll.tlc_auto_msg', function() {
+                    if (scrollTriggered) return;
+
+                    const scrollPercent = ($(window).scrollTop() / ($(document).height() - $(window).height())) * 100;
+                    if (scrollPercent >= autoMsgSettings.trigger_value) {
+                        showAutoMessage();
+                        scrollTriggered = true; // Ensure it only triggers once per page view via scroll
+                        $(window).off('scroll.tlc_auto_msg'); // Remove this specific scroll listener
+                    }
+                });
+            }
+        }
+
+        function showAutoMessage() {
+            if (sessionStorage.getItem(autoMsgSessionKey) || !autoMsgSettings.text) { // Double check shown & text exists
+                return;
+            }
+
+            // Check if widget is already open and has user interaction (messages beyond welcome)
+            const messagesCount = $messagesContainer.children('.tlc-message').not('.system').length;
+
+            if (!$chatWidget.hasClass('active')) {
+                $chatWidget.addClass('active'); // Open the widget
+                startPolling(); // Start polling if widget was closed
+            }
+
+            appendMessage(autoMsgSettings.text, 'system', 'AutoMessage'); // Using 'system' type, could be 'auto'
+            scrollToBottom();
+            sessionStorage.setItem(autoMsgSessionKey, 'true'); // Mark as shown for this session
+        }
+
+        // Initialize Auto Message checks
+        checkAndTriggerAutoMessage();
+
 
         // Utility to generate a simple UUID for visitor token
         function generateUUID() { // Public Domain/MIT

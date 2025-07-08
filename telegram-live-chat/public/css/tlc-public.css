@@ -3,27 +3,69 @@
  * included in this file.
  */
 
+/* Default variables (fallback if :root not supported, though unlikely for modern browsers) */
+:root {
+    --tlc-header-bg-color: #0073aa;
+    --tlc-header-text-color: #ffffff;
+    --tlc-button-bg-color: #0088cc;
+    --tlc-button-icon-color: #ffffff;
+    --tlc-visitor-msg-bg: #dcf8c6;
+    --tlc-visitor-msg-text: #000000;
+    --tlc-agent-msg-bg: #e0e0e0;
+    --tlc-agent-msg-text: #000000;
+}
+
+
+.tlc-widget-container {
+    /* Default position is bottom-right, handled by individual tlc-widget-button and tlc-chat-widget */
+}
+
+.tlc-widget-container.tlc-widget-position-bottom-left .tlc-widget-button {
+    right: auto;
+    left: 20px;
+}
+.tlc-widget-container.tlc-widget-position-bottom-left .tlc-chat-widget {
+    right: auto;
+    left: 20px;
+}
+
 .tlc-widget-button {
     position: fixed;
     bottom: 20px;
-    right: 20px;
+    right: 20px; /* Default, overridden by tlc-widget-position-bottom-left */
     width: 60px;
     height: 60px;
-    background-color: #0088cc;
-    color: white;
-    border-radius: 50%;
-    text-align: center;
-    line-height: 60px;
+    background-color: var(--tlc-button-bg-color);
+    color: var(--tlc-button-icon-color); /* For icon fill */
+    border-radius: 50%; /* Default circle */
+    display: flex; /* For centering icon */
+    align-items: center;
+    justify-content: center;
     font-size: 24px;
     cursor: pointer;
     box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
     z-index: 99998;
+    transition: background-color 0.3s ease;
 }
+.tlc-widget-button:hover {
+    opacity: 0.9;
+}
+.tlc-widget-button-icon {
+    fill: var(--tlc-button-icon-color); /* SVG icon color */
+    width: 28px; /* Ensure consistent icon size */
+    height: 28px;
+}
+
+
+.tlc-widget-container.tlc-widget-shape-square .tlc-widget-button {
+    border-radius: 8px; /* Square with rounded corners */
+}
+
 
 .tlc-chat-widget {
     position: fixed;
     bottom: 90px;
-    right: 20px;
+    right: 20px; /* Default, overridden by tlc-widget-position-bottom-left */
     width: 320px;
     max-height: 450px;
     background-color: #fff;
@@ -41,8 +83,8 @@
 }
 
 .tlc-chat-header {
-    background-color: #0073aa; /* WordPress blue */
-    color: white;
+    background-color: var(--tlc-header-bg-color);
+    color: var(--tlc-header-text-color);
     padding: 10px 15px;
     font-weight: bold;
     display: flex;
@@ -53,9 +95,13 @@
 .tlc-chat-header-close {
     background: none;
     border: none;
-    color: white;
+    color: var(--tlc-header-text-color); /* Match header text color */
     font-size: 20px;
     cursor: pointer;
+    opacity: 0.8;
+}
+.tlc-chat-header-close:hover {
+    opacity: 1;
 }
 
 .tlc-chat-messages {
@@ -76,13 +122,15 @@
 }
 
 .tlc-chat-messages .tlc-message.visitor {
-    background-color: #dcf8c6; /* WhatsApp like green */
+    background-color: var(--tlc-visitor-msg-bg);
+    color: var(--tlc-visitor-msg-text);
     margin-left: auto;
     text-align: right;
 }
 
 .tlc-chat-messages .tlc-message.agent {
-    background-color: #e0e0e0;
+    background-color: var(--tlc-agent-msg-bg);
+    color: var(--tlc-agent-msg-text);
     margin-right: auto;
     text-align: left;
 }
@@ -128,5 +176,28 @@
 }
 
 .tlc-chat-input-area button:hover {
-    background-color: #005a87;
+    background-color: #005a87; /* Consider making this a darker shade of header or button bg */
+}
+
+/* Hide on Desktop/Mobile */
+.tlc-hide-on-desktop .tlc-widget-button,
+.tlc-hide-on-desktop .tlc-chat-widget.active { /* Only hide active widget if button is also hidden */
+    /* Desktop typically > 768px or > 1024px. Let's use 769px as breakpoint. */
+}
+@media (min-width: 769px) {
+    .tlc-hide-on-desktop .tlc-widget-button,
+    .tlc-hide-on-desktop .tlc-chat-widget.active {
+        display: none !important; /* Important to override other display states */
+    }
+}
+
+.tlc-hide-on-mobile .tlc-widget-button,
+.tlc-hide-on-mobile .tlc-chat-widget.active {
+    /* Mobile typically < 768px */
+}
+@media (max-width: 768px) {
+    .tlc-hide-on-mobile .tlc-widget-button,
+    .tlc-hide-on-mobile .tlc-chat-widget.active {
+        display: none !important;
+    }
 }
