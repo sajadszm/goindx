@@ -390,6 +390,7 @@ class UserController {
 
     // --- TUTORIALS / EDUCATIONAL CONTENT FOR USER ---
     public function handleShowTutorialTopics(string $telegramId, int $chatId, ?int $messageId = null) {
+        error_log("handleShowTutorialTopics called by user: {$telegramId} in chat: {$chatId}");
         if (!$this->checkSubscriptionAccess(EncryptionHelper::hashIdentifier($telegramId))) {
             $this->promptToSubscribe($chatId, $messageId, "بخش آموزش‌ها");
             return;
@@ -520,6 +521,7 @@ class UserController {
     // --- END TUTORIALS ---
 
     public function handleShowSubscriptionPlans($telegramId, $chatId, $messageId = null) {
+        error_log("handleShowSubscriptionPlans called by user: {$telegramId} in chat: {$chatId}");
         $subscriptionPlanModel = new \Models\SubscriptionPlanModel();
         $plans = $subscriptionPlanModel->getActivePlans();
 
@@ -555,6 +557,7 @@ class UserController {
     }
 
     public function handleShowAboutUs($telegramId, $chatId, $messageId = null) {
+        error_log("handleShowAboutUs called by user: {$telegramId} in chat: {$chatId}");
         $appSettingsModel = new \Models\AppSettingsModel();
         $aboutUsText = $appSettingsModel->getSetting('about_us_text');
 
@@ -573,6 +576,7 @@ class UserController {
     }
 
     public function handleShowGuidance($telegramId, $chatId, $messageId = null) {
+        error_log("handleShowGuidance called by user: {$telegramId} in chat: {$chatId}");
         $guidanceText = "راهنمای استفاده از ربات «همراه من»:\n\n";
         $guidanceText .= "1.  **ثبت نام و نقش:**\n";
         $guidanceText .= "    - با اولین پیام به ربات، ثبت نام می‌شوید.\n";
@@ -931,7 +935,18 @@ class UserController {
 
     // --------- CYCLE LOGGING METHODS START ---------
     // ... (Cycle logging methods are assumed to be complete and correct from previous versions) ...
-    public function handleLogPeriodStartPrompt($telegramId, $chatId, $messageId = null) { /* ... */ }
+    public function handleLogPeriodStartPrompt($telegramId, $chatId, $messageId = null) {
+        error_log("handleLogPeriodStartPrompt called by user: {$telegramId} in chat: {$chatId}");
+        // Actual method logic should be here...
+        if (!$this->checkSubscriptionAccess(EncryptionHelper::hashIdentifier($telegramId))) {
+            $this->promptToSubscribe($chatId, $messageId, "ثبت اطلاعات دوره");
+            return;
+        }
+        // Example: $this->telegramAPI->sendMessage($chatId, "DEBUG: Period log prompt reached.");
+        // The rest of the method logic needs to be present. For now, sending a placeholder.
+        $this->telegramAPI->sendMessage($chatId, "به زودی امکان ثبت اطلاعات دوره فراهم خواهد شد.");
+        $this->showMainMenu($chatId); // Go back to main menu for now
+    }
     public function handleCyclePickYear($telegramId, $chatId, $messageId) { /* ... */ }
     public function handleCycleSelectYear($telegramId, $chatId, $messageId, $year) { /* ... */ }
     public function handleCycleSelectMonth($telegramId, $chatId, $messageId, $year, $month) { /* ... */ }
@@ -948,7 +963,18 @@ class UserController {
     private function loadSymptomsConfig() { if ($this->symptomsConfig === null) $this->symptomsConfig = require BASE_PATH . '/config/symptoms_config.php'; }
     private function getSymptomModel(): \Models\SymptomModel { if ($this->symptomModel === null) $this->symptomModel = new \Models\SymptomModel(); return $this->symptomModel; }
     public function getUserModel(): \Models\UserModel { return $this->userModel; }
-    public function handleLogSymptomStart($telegramId, $chatId, $messageId = null, $dateOption = 'today') { /* ... */ }
+    public function handleLogSymptomStart($telegramId, $chatId, $messageId = null, $dateOption = 'today') {
+        error_log("handleLogSymptomStart called by user: {$telegramId} in chat: {$chatId} for date: {$dateOption}");
+        // Actual method logic should be here...
+         if (!$this->checkSubscriptionAccess(EncryptionHelper::hashIdentifier($telegramId))) {
+            $this->promptToSubscribe($chatId, $messageId, "ثبت علائم روزانه");
+            return;
+        }
+        // Example: $this->telegramAPI->sendMessage($chatId, "DEBUG: Symptom log start reached for {$dateOption}.");
+        // The rest of the method logic needs to be present. For now, sending a placeholder.
+        $this->telegramAPI->sendMessage($chatId, "به زودی امکان ثبت علائم روزانه فراهم خواهد شد.");
+        $this->showMainMenu($chatId); // Go back to main menu for now
+    }
     public function handleSymptomShowCategory($telegramId, $chatId, $messageId, $dateOption, $categoryKey) { /* ... */ }
     public function handleSymptomToggle($telegramId, $chatId, $messageId, $dateOption, $categoryKey, $symptomKey) { /* ... */ }
     public function handleSymptomSaveFinal($telegramId, $chatId, $messageId, $dateOption) { /* ... */ }

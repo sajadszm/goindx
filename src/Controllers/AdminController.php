@@ -464,7 +464,7 @@ class AdminController {
                  elseif($fieldName === 'is_tutorial_topic' || $fieldName === 'is_active') $ackText .= ($collectedData[$fieldName] ? 'بله':'خیر');
                  else $ackText .= $collectedData[$fieldName];
 
-                 $this->telegramAPI->editMessageText($chatId, $messageId, $ackText, json_encode(['inline_keyboard'=>[]]), 'Markdown');
+                 $this->telegramAPI->editMessageText($chatId, $messageId, $ackText, null, 'Markdown'); // Corrected: null for reply_markup
                  $this->telegramAPI->sendMessage($chatId, $promptText, null, 'Markdown');
              } else {
                 $this->telegramAPI->sendMessage($chatId, $promptText, $promptKeyboard, 'Markdown');
@@ -556,8 +556,9 @@ class AdminController {
             if (!empty($children)) {
                 $this->telegramAPI->answerCallbackQuery($callbackQueryId, "این موضوع مطالب داخلی دارد. ابتدا آنها را حذف کنید.", true);
                 $cancelCallback = $contentToDelete['parent_id'] ? ('admin_content_list_articles:' . $contentToDelete['parent_id']) : 'admin_content_list_topics';
+                $keyboardOnError = ['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => $cancelCallback ]]]];
                 $this->telegramAPI->editMessageText($chatId, $messageId, "❌ **خطا:** این موضوع دارای مطالب داخلی است.\nابتدا آنها را حذف یا به موضوع دیگری منتقل کنید.",
-                    json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => $cancelCallback ]]]]));
+                    $keyboardOnError); // Corrected: pass array directly
                 return;
             }
         }
