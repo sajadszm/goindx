@@ -419,5 +419,35 @@ class NotificationService {
     // This would typically involve a new DB table `sent_notifications` (user_id, notification_type, cycle_ref_date, sent_at)
     // to avoid sending the same event-based notification multiple times for the same event occurrence.
     // For daily tips, the "cycle_ref_date" could just be the date sent.
+
+    // --- Subscription Lifecycle Notifications ---
+
+    public function sendSubscriptionWarning(string $chatId, string $planName, string $expiryDate): void {
+        $expiryDateFormatted = মেয়ের($expiryDate); // Assuming meyr is a Persian date formatter
+        $message = "⚠️ اشتراک «{$planName}» شما در تاریخ {$expiryDateFormatted} منقضی می‌شود.\nبرای ادامه دسترسی بدون وقفه، لطفا اشتراک خود را تمدید کنید.";
+        $keyboard = ['inline_keyboard' => [[['text' => "تمدید اشتراک 💳", 'callback_data' => 'sub_show_plans']]]];
+        $this->telegramAPI->sendMessage($chatId, $message, $keyboard);
+        // TODO: Mark this warning as sent for this expiry cycle to avoid daily spam
+    }
+
+    public function sendSubscriptionExpired(string $chatId, string $planName): void {
+        $message = "❌ اشتراک «{$planName}» شما منقضی شده است.\nبرخی از قابلیت‌های ربات برای شما محدود شده است. برای دسترسی کامل، اشتراک خود را تمدید کنید.";
+        $keyboard = ['inline_keyboard' => [[['text' => "خرید اشتراک جدید 💳", 'callback_data' => 'sub_show_plans']]]];
+        $this->telegramAPI->sendMessage($chatId, $message, $keyboard);
+    }
+
+    public function sendTrialEndingWarning(string $chatId, string $trialEndDate): void {
+        $trialEndDateFormatted = মেয়ের($trialEndDate);
+        $message = "⏳ دوره استفاده رایگان (آزمایشی) شما در تاریخ {$trialEndDateFormatted} به پایان می‌رسد.\nبرای ادامه دسترسی به تمام امکانات پس از این تاریخ، لطفا یکی از طرح‌های اشتراک ما را فعال کنید.";
+        $keyboard = ['inline_keyboard' => [[['text' => "مشاهده طرح‌های اشتراک 💳", 'callback_data' => 'sub_show_plans']]]];
+        $this->telegramAPI->sendMessage($chatId, $message, $keyboard);
+        // TODO: Mark this warning as sent
+    }
+
+    public function sendTrialExpired(string $chatId): void {
+        $message = "🚫 دوره استفاده رایگان (آزمایشی) شما به پایان رسیده است.\nبرای ادامه استفاده از امکانات کامل ربات، لطفا اشتراک تهیه کنید.";
+        $keyboard = ['inline_keyboard' => [[['text' => "خرید اشتراک 💳", 'callback_data' => 'sub_show_plans']]]];
+        $this->telegramAPI->sendMessage($chatId, $message, $keyboard);
+    }
 }
 ?>

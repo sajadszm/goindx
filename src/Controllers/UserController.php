@@ -114,9 +114,10 @@ class UserController {
 
         $menuText = $text;
         $buttons = [];
+        $hasAccess = $this->checkSubscriptionAccess($hashedTelegramId);
 
         if ($decryptedRole === 'menstruating') {
-            if ($cycleInfo && !empty($cycleInfo['period_start_dates'])) {
+            if ($hasAccess && $cycleInfo && !empty($cycleInfo['period_start_dates'])) {
                 $cycleService = new \Services\CycleService($cycleInfo);
                 $currentDay = $cycleService->getCurrentCycleDay();
                 $currentPhaseKey = $cycleService->getCurrentCyclePhase();
@@ -171,16 +172,18 @@ class UserController {
             $buttons[] = [['text' => "💔 قطع اتصال از {$partnerFirstName}", 'callback_data' => 'partner_disconnect']];
 
             if ($decryptedRole === 'partner' && $partnerUser) {
-                $partnerCycleInfoData = null;
-                if (!empty($partnerUser['encrypted_cycle_info'])) {
-                    try {
-                        $partnerCycleInfoData = json_decode(EncryptionHelper::decrypt($partnerUser['encrypted_cycle_info']), true);
-                    } catch (\Exception $e) { error_log("Failed to decrypt partner's cycle_info: " . $e->getMessage()); }
-                }
+                // Partner viewing menstruating user's info. Access depends on the partner's own subscription.
+                if ($hasAccess) { // $hasAccess here refers to the partner's subscription status
+                    $partnerCycleInfoData = null;
+                    if (!empty($partnerUser['encrypted_cycle_info'])) {
+                        try {
+                            $partnerCycleInfoData = json_decode(EncryptionHelper::decrypt($partnerUser['encrypted_cycle_info']), true);
+                        } catch (\Exception $e) { error_log("Failed to decrypt partner's cycle_info: " . $e->getMessage()); }
+                    }
 
-                if ($partnerCycleInfoData && !empty($partnerCycleInfoData['period_start_dates'])) {
-                    $partnerCycleService = new \Services\CycleService($partnerCycleInfoData);
-                    $partnerCurrentDay = $partnerCycleService->getCurrentCycleDay();
+                    if ($partnerCycleInfoData && !empty($partnerCycleInfoData['period_start_dates'])) {
+                        $partnerCycleService = new \Services\CycleService($partnerCycleInfoData);
+                        $partnerCurrentDay = $partnerCycleService->getCurrentCycleDay();
                     $partnerCurrentPhaseKey = $partnerCycleService->getCurrentCyclePhase();
                     $phaseTranslations = [
                         'menstruation' => 'پریود (قاعدگی) 🩸',
@@ -217,9 +220,63 @@ class UserController {
         $buttons[] = [['text' => "💬 پشتیبانی", 'callback_data' => 'support_request_start']];
         $buttons[] = [['text' => "ℹ️ درباره ما", 'callback_data' => 'show_about_us']];
 
+        // Conditional subscription button
+        $showSubscriptionButton = true;
+        if (isset($user['subscription_status']) && $user['subscription_status'] === 'active' && !empty($user['subscription_ends_at'])) {
+            // Could add logic here to show if expiry is near, or a "Manage Subscription" button
+            // For now, if active, don't show "Buy Subscription"
+            $showSubscriptionButton = false;
+        }
+        if ($showSubscriptionButton) {
+             $buttons[] = [['text' => "خرید اشتراک 💳", 'callback_data' => 'sub_show_plans']];
+        }
+
+        // Admin Panel Button
+        if ((string)$chatId === ADMIN_TELEGRAM_ID) { // Ensure ADMIN_TELEGRAM_ID is defined and matches
+            $buttons[] = [['text' => "👑 پنل ادمین", 'callback_data' => 'admin_show_menu']];
+        }
+
+
         $keyboard = ['inline_keyboard' => $buttons];
-        $this->telegramAPI->sendMessage($chatId, $menuText, $keyboard, 'MarkdownV2');
+        $this->telegramAPI->sendMessage($chatId, $menuText, $keyboard, 'Markdown');
     }
+
+    public function handleShowSubscriptionPlans($telegramId, $chatId, $messageId = null) {
+        $subscriptionPlanModel = new \Models\SubscriptionPlanModel();
+        $plans = $subscriptionPlanModel->getActivePlans();
+
+        if (empty($plans)) {
+            $text = "متاسفانه در حال حاضر هیچ طرح اشتراکی فعالی وجود ندارد. لطفا بعدا دوباره سر بزنید.";
+            $keyboard = [['inline_keyboard' => [[['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']]]]];
+            if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard);
+            else $this->telegramAPI->sendMessage($chatId, $text, $keyboard);
+            return;
+        }
+
+        $text = "💎 طرح‌های اشتراک «همراه من»:\n\n";
+        $planButtons = [];
+        foreach ($plans as $plan) {
+            $priceFormatted = number_format($plan['price']); // Format price for readability
+            $buttonText = "{$plan['name']} ({$plan['duration_months']} ماهه) - {$priceFormatted} تومان";
+            if (!empty($plan['description'])) {
+                 // $text .= "*{$plan['name']}* ({$plan['duration_months']} ماهه) - {$priceFormatted} تومان\n_{$plan['description']}_\n\n"; // Add to main text
+            }
+            $planButtons[] = [['text' => $buttonText, 'callback_data' => 'sub_select_plan:' . $plan['id']]];
+        }
+
+        $keyboard = ['inline_keyboard' => $planButtons];
+        $keyboard['inline_keyboard'][] = [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']];
+
+        // Send as a new message or edit existing one
+        if ($messageId) {
+            // Check if the current message text is already the plans list to avoid "message is not modified"
+            // For simplicity, just try to edit. If it fails, it means it's likely the same message or an issue.
+            $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        }
+    }
+
 
     public function handleShowAboutUs($telegramId, $chatId, $messageId = null) {
         $appSettingsModel = new \Models\AppSettingsModel();
@@ -284,10 +341,11 @@ class UserController {
 
         $text = "💬 شما در حال ارسال پیام به پشتیبانی هستید.\nلطفا پیام خود را بنویسید و ارسال کنید. پیام شما مستقیما برای ادمین ارسال خواهد شد.\n\nبرای لغو، /cancel را ارسال کنید یا از منوی اصلی گزینه دیگری انتخاب نمایید.";
 
+        $emptyKeyboard = json_encode(['inline_keyboard' => []]);
         if ($messageId) {
-            $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
+            $this->telegramAPI->editMessageText($chatId, $messageId, $text, $emptyKeyboard);
         } else {
-            $this->telegramAPI->sendMessage($chatId, $text, null);
+            $this->telegramAPI->sendMessage($chatId, $text, $emptyKeyboard); // Send with empty keyboard to remove any previous one if it was a new message context
         }
     }
 
@@ -371,17 +429,26 @@ class UserController {
         return 'YOUR_BOT_USERNAME';
     }
 
-    public function handleGenerateInvitation($telegramId, $chatId) {
+    public function handleGenerateInvitation($telegramId, $chatId, $messageIdToEdit = null) { // Added messageIdToEdit
         $hashedTelegramId = EncryptionHelper::hashIdentifier((string)$telegramId);
-        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+
+        if (!$this->checkSubscriptionAccess($hashedTelegramId)) {
+            $this->promptToSubscribe($chatId, $messageIdToEdit, "قابلیت دعوت از همراه");
+            return;
+        }
+
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId); // Already fetched in checkSubscriptionAccess, but cleaner to fetch again or pass user object
 
         if (!$user) {
+            // This case should be rare if checkSubscriptionAccess passed, but as a safeguard
             $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد.");
             return;
         }
         if (!empty($user['partner_telegram_id_hash'])) {
-            $this->telegramAPI->sendMessage($chatId, "شما در حال حاضر یک همراه متصل دارید. برای دعوت از فرد جدید، ابتدا باید اتصال فعلی را قطع کنید.");
-            $this->showMainMenu($chatId);
+            $message = "شما در حال حاضر یک همراه متصل دارید. برای دعوت از فرد جدید، ابتدا باید اتصال فعلی را قطع کنید.";
+            if ($messageIdToEdit) $this->telegramAPI->editMessageText($chatId, $messageIdToEdit, $message, json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'main_menu_show']]]]));
+            else $this->telegramAPI->sendMessage($chatId, $message, json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'main_menu_show']]]]));
+            // $this->showMainMenu($chatId); // Avoid recursive call if showMainMenu itself calls this
             return;
         }
 
@@ -390,8 +457,12 @@ class UserController {
         if ($token) {
             $botUsername = $this->getBotUsername();
             $invitationLink = "https://t.me/{$botUsername}?start=invite_{$token}";
-            $message = "لینک دعوت برای همراه شما ایجاد شد:\n\n`{$invitationLink}`\n\nاین لینک را کپی کرده و برای فرد مورد نظر ارسال کنید. این لینک یکبار مصرف است و پس از استفاده یا ساخت لینک جدید، باطل می‌شود.\n\nهمچنین همراه شما می‌تواند کد زیر را مستقیما در ربات وارد کند (از طریق دکمه پذیرش دعوتنامه):\n`{$token}`";
-            $this->telegramAPI->sendMessage($chatId, $message, null, 'MarkdownV2');
+            // Using classic Markdown, `backticks` are for code blocks. For simple highlighting of the link/token,
+            // we might not need them or can use *bold* or just plain text.
+            // For now, let's remove backticks to be safe with classic Markdown, or ensure they are correctly paired if intended as code.
+            // Telegram classic markdown treats single backticks as inline code.
+            $message = "لینک دعوت برای همراه شما ایجاد شد:\n\n{$invitationLink}\n\nاین لینک را کپی کرده و برای فرد مورد نظر ارسال کنید. این لینک یکبار مصرف است و پس از استفاده یا ساخت لینک جدید، باطل می‌شود.\n\nهمچنین همراه شما می‌تواند کد زیر را مستقیما در ربات وارد کند (از طریق دکمه پذیرش دعوتنامه):\n{$token}";
+            $this->telegramAPI->sendMessage($chatId, $message, null, 'Markdown'); // Switched to Markdown
             $this->showMainMenu($chatId, "لینک دعوت ارسال شد. منوی اصلی:");
             return;
         } else {
@@ -429,9 +500,24 @@ class UserController {
 
     public function handleAcceptInvitationCommand(string $telegramId, int $chatId, string $firstName, ?string $username, string $token) {
         $accepterHashedId = EncryptionHelper::hashIdentifier($telegramId);
+
+        // Check subscription status of the user trying to accept.
+        // If they are a new user being created by this flow, checkSubscriptionAccess might fail initially.
+        // So, we might need to allow acceptance, then prompt for subscription if they are new and trial needs to start,
+        // or if the *feature of being partnered* is premium.
+        // For now, let's assume accepting an invite might be free, but using partner features requires the *inviter* or *accepter* to be subbed.
+        // Let's check the accepter's status. If they are an existing user, they need access.
+        // If they are a new user, they will get a free trial upon creation.
+
         $accepterUser = $this->userModel->findUserByTelegramId($accepterHashedId);
 
-        if (!$accepterUser) {
+        if ($accepterUser) { // If user already exists, check their subscription
+            if (!$this->checkSubscriptionAccess($accepterHashedId)) {
+                $this->promptToSubscribe($chatId, null, "قابلیت اتصال به همراه"); // Send as new message
+                return;
+            }
+        } else {
+            // New user: will be created and get a free trial. Access check will pass after creation.
             $this->userModel->createUser($accepterHashedId, (string)$chatId, $firstName, $username);
             $accepterUser = $this->userModel->findUserByTelegramId($accepterHashedId);
             if (!$accepterUser) {
@@ -739,12 +825,21 @@ class UserController {
     }
 
     public function handleLogSymptomStart($telegramId, $chatId, $messageId = null, $dateOption = 'today') {
+        $hashedTelegramId = EncryptionHelper::hashIdentifier((string)$telegramId); // Use $telegramId consistently
+        if (!$this->checkSubscriptionAccess($hashedTelegramId)) {
+            $this->promptToSubscribe($chatId, $messageId, "قابلیت ثبت علائم");
+            return;
+        }
+
         $this->loadSymptomsConfig();
         $symptomDate = ($dateOption === 'yesterday') ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d');
 
-        $userHashedId = EncryptionHelper::hashIdentifier((string)$telegramId);
-        $userIdRecord = $this->userModel->findUserByTelegramId($userHashedId);
-        if (!$userIdRecord) { /* handle error */ return; }
+        // $userHashedId is already defined
+        $userIdRecord = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        if (!$userIdRecord) { /* handle error, though checkSubscriptionAccess might have caught it */
+            $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد.");
+            return;
+        }
         $dbUserId = $userIdRecord['id'];
 
         $loggedSymptomsRaw = $this->getSymptomModel()->getLoggedSymptomsForDate($dbUserId, $symptomDate);
@@ -875,10 +970,116 @@ class UserController {
             $text = "علائم شما برای تاریخ {$symptomDate} با موفقیت ثبت شد! ✅\n";
         }
 
-        $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
+        $this->telegramAPI->editMessageText($chatId, $messageId, $text, json_encode(['inline_keyboard' => []]));
         $this->showMainMenu($chatId, "به منوی اصلی بازگشتید.");
     }
 
     // --------- SYMPTOM LOGGING METHODS END -----------
+
+    // --------- SUBSCRIPTION METHODS START -----------
+    public function handleSubscribePlan($telegramId, $chatId, $messageId, $planId) {
+        $hashedTelegramId = EncryptionHelper::hashIdentifier((string)$telegramId);
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        if (!$user) {
+            $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد.");
+            return;
+        }
+
+        $subscriptionPlanModel = new \Models\SubscriptionPlanModel();
+        $plan = $subscriptionPlanModel->getPlanById((int)$planId);
+
+        if (!$plan || !$plan['is_active']) {
+            $this->telegramAPI->editMessageText($chatId, $messageId, "متاسفانه طرح انتخاب شده معتبر یا فعال نیست. لطفا دوباره تلاش کنید.", json_encode(['inline_keyboard' => [[['text' => "🔙 نمایش طرح‌ها", 'callback_data' => 'sub_show_plans']]]]));
+            return;
+        }
+
+        $zarinpalService = new \Services\ZarinpalService();
+        // Amount should be in Toman as per Zarinpal docs for v4, ensure price is stored correctly.
+        $amount = (int)$plan['price'];
+        $description = "خرید اشتراک: " . $plan['name'];
+        // User email/mobile can be fetched from user profile if stored, or passed as null
+        $userEmail = null; // Example: $user['email'] if you store it
+        $userMobile = null; // Example: $user['mobile'] if you store it
+
+        $paymentUrl = $zarinpalService->requestPayment($amount, $user['id'], (int)$planId, $description, $userEmail, $userMobile);
+
+        if ($paymentUrl) {
+            $text = "شما طرح «{$plan['name']}» ({$plan['duration_months']} ماهه) به قیمت " . number_format($plan['price']) . " تومان را انتخاب کردید.\n\n";
+            $text .= "برای تکمیل خرید، لطفا از طریق لینک زیر پرداخت خود را انجام دهید:";
+            $keyboard = [
+                'inline_keyboard' => [
+                    [['text' => "💳 پرداخت آنلاین", 'url' => $paymentUrl]],
+                    [['text' => "🔙 انتخاب طرح دیگر", 'callback_data' => 'sub_show_plans']],
+                    [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']]
+                ]
+            ];
+            if ($messageId) {
+                 $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard);
+            } else {
+                 $this->telegramAPI->sendMessage($chatId, $text, $keyboard);
+            }
+        } else {
+            $text = "متاسفانه در اتصال به درگاه پرداخت مشکلی پیش آمد. لطفا لحظاتی دیگر دوباره تلاش کنید.";
+            $keyboard = [
+                'inline_keyboard' => [
+                    [['text' => "🔙 انتخاب طرح دیگر", 'callback_data' => 'sub_show_plans']],
+                    [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']]
+                ]
+            ];
+             if ($messageId) {
+                $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard);
+            } else {
+                $this->telegramAPI->sendMessage($chatId, $text, $keyboard);
+            }
+        }
+    }
+    // --------- SUBSCRIPTION METHODS END -----------
+
+    // --------- ACCESS CONTROL START -----------
+    private function checkSubscriptionAccess(string $hashedTelegramId): bool {
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        if (!$user) {
+            return false; // Should not happen for an active user flow
+        }
+
+        if ($user['subscription_status'] === 'active') {
+            if (empty($user['subscription_ends_at'])) return true; // Active, no end date (lifetime? or error?) -> allow
+            try {
+                $expiryDate = new \DateTime($user['subscription_ends_at']);
+                return $expiryDate > new \DateTime(); // Active and not expired
+            } catch (\Exception $e) {
+                error_log("Error parsing subscription_ends_at for user {$hashedTelegramId}: " . $e->getMessage());
+                return false; // Error in date, deny access
+            }
+        } elseif ($user['subscription_status'] === 'free_trial') {
+            if (empty($user['trial_ends_at'])) return false; // Trial but no end date -> deny
+            try {
+                $trialExpiryDate = new \DateTime($user['trial_ends_at']);
+                return $trialExpiryDate > new \DateTime(); // Trial and not expired
+            } catch (\Exception $e) {
+                error_log("Error parsing trial_ends_at for user {$hashedTelegramId}: " . $e->getMessage());
+                return false; // Error in date, deny access
+            }
+        }
+        return false; // 'expired', 'none', or any other status
+    }
+
+    private function promptToSubscribe(int $chatId, ?int $messageIdToEdit = null, string $featureName = "این قابلیت") {
+        $text = "⚠️ برای دسترسی به {$featureName}، نیاز به اشتراک فعال دارید.\n\nلطفا یکی از طرح‌های اشتراک ما را انتخاب کنید:";
+        // $this->handleShowSubscriptionPlans will be called by the callback 'sub_show_plans'
+        $keyboard = [
+            'inline_keyboard' => [
+                [['text' => "مشاهده طرح‌های اشتراک 💳", 'callback_data' => 'sub_show_plans']],
+                [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']]
+            ]
+        ];
+        if ($messageIdToEdit) {
+            $this->telegramAPI->editMessageText($chatId, $messageIdToEdit, $text, $keyboard);
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard);
+        }
+    }
+    // --------- ACCESS CONTROL END -----------
+
 }
 ?>
