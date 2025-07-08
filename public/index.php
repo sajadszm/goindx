@@ -4,6 +4,9 @@ require_once dirname(__DIR__) . '/config/config.php';
 
 use Controllers\UserController;
 use Controllers\AdminController;
+use Controllers\SupportController; // Added
+use Models\UserModel; // Added for SupportController
+use Models\SupportTicketModel; // Added for SupportController
 use Telegram\TelegramAPI;
 use Helpers\EncryptionHelper;
 
@@ -30,8 +33,13 @@ if (!$update) {
 }
 
 $telegramAPI = new TelegramAPI(TELEGRAM_BOT_TOKEN);
+$userModel = new UserModel(); // Instantiate UserModel
 $userController = new UserController($telegramAPI);
+// $adminController instantiation needs SupportTicketModel if it uses it. For now, it doesn't directly.
 $adminController = new AdminController($telegramAPI);
+$supportTicketModel = new SupportTicketModel(); // Instantiate SupportTicketModel
+$supportController = new SupportController($telegramAPI, $supportTicketModel, $userModel); // Instantiate SupportController
+
 
 try {
     if (isset($update['message'])) {
@@ -74,16 +82,47 @@ try {
                      $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
                      $telegramAPI->sendMessage($chatId, "عملیات ادمین لغو شد.");
                      $adminController->showAdminMenu($userId, $chatId, null);
-                } elseif ($stateAction === 'awaiting_support_message') {
-                    $userController->handleForwardSupportMessage($userId, $chatId, $text, $firstName, $username);
+                } elseif ($stateAction === 'awaiting_initial_support_message' || (isset($stateInfo['action']) && $stateInfo['action'] === 'awaiting_user_reply_to_ticket')) {
+                    $supportController->handleUserMessage($userId, $chatId, $text, $firstName, $username);
                 } elseif ($stateAction === 'admin_awaiting_plan_add' && $userId === ADMIN_TELEGRAM_ID) {
                     $adminController->handleAddSubscriptionPlanDetails($userId, $chatId, $text);
-                } elseif (($stateAction === 'admin_add_content' || $stateAction === 'admin_edit_content') && $userId === ADMIN_TELEGRAM_ID && is_array($stateInfo)) {
+                } elseif ((strpos($stateAction, 'admin_add_content') === 0 || strpos($stateAction, 'admin_edit_content') === 0) && $userId === ADMIN_TELEGRAM_ID && is_array($stateInfo)) { // Adjusted for more flexible admin content states
                     $adminController->handleAdminConversation($userId, $chatId, $text, $stateInfo);
+                } elseif ($stateAction === 'admin_awaiting_ticket_id_for_view' && $userId === ADMIN_TELEGRAM_ID) {
+                    if (ctype_digit($text)) {
+                        $adminController->viewSupportTicket($userId, $chatId, null, (int)$text);
+                    } else {
+                        $telegramAPI->sendMessage($chatId, "ID تیکت باید یک عدد باشد.");
+                        $adminController->showSupportTicketsMenu($userId, $chatId, null); // Go back
+                    }
+                } elseif (isset($stateInfo['action']) && $stateInfo['action'] === 'admin_awaiting_reply_to_ticket' && $userId === ADMIN_TELEGRAM_ID && isset($stateInfo['ticket_id'])) {
+                    $adminController->handleAdminSupportReply($userId, $chatId, $text, (int)$stateInfo['ticket_id']);
+                } elseif ($stateAction === 'admin_awaiting_user_identifier' && $userId === ADMIN_TELEGRAM_ID) {
+                    $adminController->findAndShowUserManagementMenu($userId, $chatId, $text);
+                } elseif (isset($stateInfo['action']) && $stateInfo['action'] === 'admin_editing_user_sub' && $userId === ADMIN_TELEGRAM_ID) { // New
+                    $step = $stateInfo['step'] ?? '';
+                    $userIdToEdit = $stateInfo['user_id_to_edit'] ?? null;
+                    if ($userIdToEdit) {
+                        if ($step === 'awaiting_plan_choice') {
+                            $adminController->processUserSubscriptionPlanChoice($userId, $chatId, (int)$userIdToEdit, $text);
+                        } elseif ($step === 'awaiting_expiry' && isset($stateInfo['plan_id_to_assign'])) {
+                            $adminController->handleUpdateUserSubscription($userId, $chatId, (int)$userIdToEdit, $stateInfo['plan_id_to_assign'], $text);
+                        } else {
+                             error_log("Admin editing user sub: Invalid step '{$step}' or missing data.");
+                             $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
+                             $adminController->showAdminMenu($userId, $chatId, null);
+                        }
+                    } else {
+                        error_log("Admin editing user sub: Missing userIdToEdit in state.");
+                        $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
+                        $adminController->showAdminMenu($userId, $chatId, null);
+                    }
+                } elseif ($stateAction === 'admin_awaiting_broadcast_message' && $userId === ADMIN_TELEGRAM_ID) { // New
+                    $adminController->confirmBroadcastMessage($userId, $chatId, $text);
                 } elseif ($stateAction === 'awaiting_referral_code') {
                     $userController->handleProcessReferralCode($userId, $chatId, $text, $firstName, $username);
                 } else {
-                    error_log("User {$userId} in unhandled state: {$userStateJson}. Clearing state.");
+                    error_log("User {$userId} in unhandled text state: {$userStateJson}. Clearing state.");
                     $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
                     $userController->handleStart($userId, $chatId, $firstName, $username);
                 }
@@ -153,6 +192,43 @@ try {
                         break;
                     case 'admin_content_do_delete':
                         $adminController->handleDeleteEducationalContent($userId, $chatId, $messageId, (int)$value);
+                        break;
+                    // Support System Admin Callbacks
+                    case 'admin_support_show_menu':
+                        $adminController->showSupportTicketsMenu($userId, $chatId, $messageId);
+                        break;
+                    case 'admin_support_list_tickets':
+                        $adminController->listSupportTickets($userId, $chatId, $messageId, $value); // value is filter_page
+                        break;
+                    case 'admin_support_prompt_ticket_id':
+                        $adminController->promptViewTicketById($userId, $chatId, $messageId);
+                        break;
+                    case 'admin_support_view_ticket':
+                        $adminController->viewSupportTicket($userId, $chatId, $messageId, (int)$value); // value is ticket_id
+                        break;
+                    case 'admin_support_prompt_reply':
+                        $adminController->promptAdminReply($userId, $chatId, $messageId, (int)$value); // value is ticket_id
+                        break;
+                    case 'admin_support_close_ticket':
+                        $adminController->handleCloseSupportTicket($userId, $chatId, $messageId, (int)$value); // value is ticket_id
+                        break;
+                    case 'admin_show_statistics':
+                        $adminController->showStatistics($userId, $chatId, $messageId);
+                        break;
+                    case 'admin_list_transactions':
+                        $adminController->listZarinpalTransactions($userId, $chatId, $messageId, (int)($value ?? 0)); // value is page
+                        break;
+                    case 'admin_user_manage_prompt_find':
+                        $adminController->promptFindUser($userId, $chatId, $messageId);
+                        break;
+                    case 'admin_user_edit_sub_prompt':
+                        $adminController->promptEditUserSubscription($userId, $chatId, $messageId, (int)$value);
+                        break;
+                    case 'admin_broadcast_prompt':
+                        $adminController->promptBroadcastMessage($userId, $chatId, $messageId);
+                        break;
+                    case 'admin_broadcast_send_confirm':
+                        $adminController->handleSendBroadcastMessage($userId, $chatId, $messageId, $value); // value is message_hash
                         break;
                     default:
                         error_log("Unknown admin callback action: " . $action . " Full data: " . $callbackData);
@@ -246,8 +322,8 @@ try {
                 case 'show_guidance':
                     $userController->handleShowGuidance($userId, $chatId, $messageId);
                     break;
-                case 'support_request_start':
-                    $userController->handleSupportRequestStart($userId, $chatId, $messageId);
+                case 'support_request_start': // Route to SupportController
+                    $supportController->userRequestSupportStart($userId, $chatId, $messageId);
                     break;
                 case 'show_about_us':
                     $userController->handleShowAboutUs($userId, $chatId, $messageId);
@@ -273,11 +349,20 @@ try {
                 case 'user_enter_referral_code_prompt':
                     $userController->handleEnterReferralCodePrompt($userId, $chatId, $messageId);
                     break;
-                case 'user_delete_account_prompt': // New
+                case 'user_delete_account_prompt':
                     $userController->handleDeleteAccountPrompt($userId, $chatId, $messageId);
                     break;
-                case 'user_delete_account_confirm': // New
+                case 'user_delete_account_confirm':
                     $userController->handleDeleteAccountConfirm($userId, $chatId, $messageId);
+                    break;
+                case 'user_show_history_menu': // New
+                    $userController->handleShowHistoryMenu($userId, $chatId, $messageId);
+                    break;
+                case 'user_history_periods': // New - value is page number
+                    $userController->handleShowPeriodHistory($userId, $chatId, $messageId, (int)($val1 ?? 0));
+                    break;
+                case 'user_history_symptoms': // New - value is page number
+                    $userController->handleShowSymptomHistory($userId, $chatId, $messageId, (int)($val1 ?? 0));
                     break;
                 default:
                     error_log("Unknown user callback action: " . $action . " Full data: " . $callbackData);

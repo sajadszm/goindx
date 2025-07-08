@@ -248,5 +248,49 @@ class ZarinpalService {
             return false;
         }
     }
+
+    /**
+     * Retrieves all transactions for admin view, paginated.
+     * @param int $limit
+     * @param int $offset
+     * @return array
+     */
+    public function getAllTransactionsAdmin(int $limit = 20, int $offset = 0): array {
+        // Joins with users table to get some user info if needed, e.g., telegram_id_hash or decrypted name (if stored)
+        // For simplicity, just fetching from transactions table first.
+        // Add JOIN users u ON t.user_id = u.id if user details are desired directly here.
+        $sql = "SELECT t.*, u.telegram_id_hash, u.encrypted_first_name
+                FROM transactions t
+                LEFT JOIN users u ON t.user_id = u.id
+                ORDER BY t.created_at DESC
+                LIMIT :limit OFFSET :offset";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach($transactions as &$tx){
+            if(!empty($tx['encrypted_first_name'])){
+                try {
+                    $tx['user_first_name'] = EncryptionHelper::decrypt($tx['encrypted_first_name']);
+                } catch (\Exception $e) {
+                    $tx['user_first_name'] = '[رمزگشایی ناموفق]';
+                }
+            } else {
+                 $tx['user_first_name'] = 'کاربر حذف شده/نامشخص';
+            }
+        }
+        return $transactions;
+    }
+
+    /**
+     * Counts total transactions for admin view.
+     * @return int
+     */
+    public function countAllTransactionsAdmin(): int {
+        $stmt = $this->db->query("SELECT COUNT(*) FROM transactions");
+        return (int)$stmt->fetchColumn();
+    }
 }
 ?>

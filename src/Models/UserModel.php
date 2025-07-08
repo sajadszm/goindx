@@ -396,5 +396,115 @@ class UserModel {
             return false;
         }
     }
+
+    // --- Admin Statistics Methods ---
+    public function getTotalUserCount(): int {
+        $stmt = $this->db->query("SELECT COUNT(*) FROM users");
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function getActiveSubscriptionCount(): int {
+        $now = date('Y-m-d H:i:s');
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM users WHERE subscription_status = 'active' AND subscription_ends_at > :now");
+        $stmt->bindParam(':now', $now);
+        $stmt->execute();
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function getActiveFreeTrialCount(): int {
+        $now = date('Y-m-d H:i:s');
+        $stmt = $this->db->prepare("SELECT COUNT(*) FROM users WHERE subscription_status = 'free_trial' AND trial_ends_at > :now");
+        $stmt->bindParam(':now', $now);
+        $stmt->execute();
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function getPartnerConnectedCount(): int {
+        $stmt = $this->db->query("SELECT COUNT(*) FROM users WHERE partner_telegram_id_hash IS NOT NULL");
+        return (int)$stmt->fetchColumn() / 2; // Each connection involves two users
+    }
+
+    public function getTotalReferredUsersCount(): int {
+        $stmt = $this->db->query("SELECT COUNT(*) FROM users WHERE referred_by_user_id IS NOT NULL");
+        return (int)$stmt->fetchColumn();
+    }
+
+    /**
+     * Retrieves all users for broadcast purposes.
+     * Fetches only necessary fields like encrypted_chat_id.
+     * @return array List of users with their encrypted_chat_id.
+     */
+    public function getAllUsersForBroadcast(): array {
+        $stmt = $this->db->query("SELECT id, encrypted_chat_id FROM users WHERE is_bot_blocked = 0"); // Assuming an is_bot_blocked field
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Retrieves user by their Telegram ID (hashed or unhashed depending on input)
+     * This is more flexible for admin finding users.
+     * @param string $telegramId Can be the actual ID or the hashed ID.
+     * @return array|false User data or false if not found.
+     */
+    public function findUserByActualOrHashedTelegramId(string $telegramIdToFind) {
+        // Try finding by direct hash first
+        $user = $this->findUserByTelegramId($telegramIdToFind);
+        if ($user) {
+            return $user;
+        }
+        // If not found, hash the input and try again (assuming input might be an unhashed ID)
+        if (ctype_digit($telegramIdToFind)) { // Check if it looks like a raw ID
+            $hashedInput = EncryptionHelper::hashIdentifier($telegramIdToFind);
+             if ($hashedInput === $telegramIdToFind) return false; // Avoid infinite loop if hash is same as input
+            return $this->findUserByTelegramId($hashedInput);
+        }
+        return false; // Not found
+    }
+     /**
+     * Retrieves user by their username (exact match, case-insensitive for some DBs by default).
+     * Username is stored encrypted. This method requires iterating if not directly queryable.
+     * For large user bases, direct query on an unencrypted username column (if acceptable) or a search index would be better.
+     * This is a simplified version that might be slow.
+     *
+     * @param string $username
+     * @return array|false User data or false if not found.
+     */
+    public function findUserByUsername(string $usernameToFind): ?array {
+        // This is inefficient for large tables as it fetches all and decrypts.
+        // In a real large-scale app, consider storing a hashed version of username for lookup
+        // or using a proper search solution if usernames need to be frequently searched.
+        // For now, this is a placeholder for small-scale.
+        $stmt = $this->db->query("SELECT * FROM users WHERE encrypted_username IS NOT NULL");
+        while ($user = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            try {
+                $decryptedUsername = EncryptionHelper::decrypt($user['encrypted_username']);
+                if (strcasecmp($decryptedUsername, $usernameToFind) === 0) {
+                    return $user;
+                }
+            } catch (\Exception $e) {
+                // Decryption failed, skip this user or log error
+            }
+        }
+        return null;
+    }
+
+
+    /**
+     * Fetches user's state (JSON string or specific array structure).
+     * @param string $hashedTelegramId
+     * @return mixed User state (array if JSON, string otherwise) or null.
+     */
+    public function getUserState(string $hashedTelegramId) {
+        $stmt = $this->db->prepare("SELECT user_state FROM users WHERE telegram_id_hash = :hashed_id");
+        $stmt->bindParam(':hashed_id', $hashedTelegramId);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($result && $result['user_state']) {
+            $decoded = json_decode($result['user_state'], true);
+            return $decoded ?: $result['user_state']; // Return array if valid JSON, else raw string
+        }
+        return null;
+    }
+
+
 }
 ?>

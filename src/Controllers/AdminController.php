@@ -6,6 +6,7 @@ use Telegram\TelegramAPI;
 use Models\SubscriptionPlanModel;
 use Models\EducationalContentModel;
 use Models\UserModel;
+use Models\SupportTicketModel; // Added
 use Helpers\EncryptionHelper;
 
 class AdminController {
@@ -13,12 +14,14 @@ class AdminController {
     private $subscriptionPlanModel;
     private $educationalContentModel;
     private $userModel;
+    private $supportTicketModel; // Added
 
     public function __construct(TelegramAPI $telegramAPI) {
         $this->telegramAPI = $telegramAPI;
         $this->subscriptionPlanModel = new SubscriptionPlanModel();
         $this->educationalContentModel = new EducationalContentModel();
         $this->userModel = new UserModel();
+        $this->supportTicketModel = new SupportTicketModel(); // Added
     }
 
     private function isAdmin(string $telegramId): bool {
@@ -50,10 +53,57 @@ class AdminController {
         $this->updateUserState($telegramId, null);
 
         $text = "👑 **پنل مدیریت ربات** 👑\n\nچه کاری می‌خواهید انجام دهید؟";
+        $buttons_flat = [
+            ['text' => "مدیریت طرح‌های اشتراک 💳", 'callback_data' => 'admin_plans_show_list'],
+            ['text' => "📚 مدیریت محتوای آموزشی", 'callback_data' => 'admin_content_show_menu'],
+            ['text' => "💬 مدیریت پیام‌های پشتیبانی", 'callback_data' => 'admin_support_show_menu'],
+            ['text' => "📊 آمار ربات", 'callback_data' => 'admin_show_statistics'],
+            ['text' => "📜 مشاهده تراکنش‌ها", 'callback_data' => 'admin_list_transactions:0'],
+            ['text' => "👤 مدیریت کاربر", 'callback_data' => 'admin_user_manage_prompt_find'],
+            ['text' => "📢 ارسال پیام همگانی", 'callback_data' => 'admin_broadcast_prompt'], // New
+            ['text' => "🏠 بازگشت به منوی اصلی کاربر", 'callback_data' => 'main_menu_show']
+        ];
+
+        $grouped_buttons = [];
+        for ($i = 0; $i < count($buttons_flat); $i += 2) {
+            $row = [$buttons_flat[$i]];
+            if (isset($buttons_flat[$i+1])) {
+                $row[] = $buttons_flat[$i+1];
+            }
+            $grouped_buttons[] = $row;
+        }
+        // Ensure last item (main_menu_show) is on its own row if it's an odd one out due to adding new items
+        if (count($buttons_flat) % 2 != 0 && count($grouped_buttons) > 1) {
+             $last_button_row = array_pop($grouped_buttons); // get the row with the single last admin item
+             $main_menu_button = array_pop($last_button_row); // get the main_menu_show button
+             if ($last_button_row) { // if there was anything left in that row
+                $grouped_buttons[] = $last_button_row;
+             }
+             $grouped_buttons[] = [$main_menu_button]; // main_menu_show on its own row
+        }
+
+
+        $keyboard = ['inline_keyboard' => $grouped_buttons];
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        }
+    }
+
+    // --- Support Ticket Management (Admin) ---
+
+    public function showSupportTicketsMenu(string $telegramId, int $chatId, ?int $messageId = null) {
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+        $this->updateUserState($telegramId, null);
+
+        $text = "💬 مدیریت پیام‌های پشتیبانی\n\nانتخاب کنید:";
         $buttons = [
-            [['text' => "مدیریت طرح‌های اشتراک 💳", 'callback_data' => 'admin_plans_show_list']],
-            [['text' => "📚 مدیریت محتوای آموزشی", 'callback_data' => 'admin_content_show_menu']],
-            [['text' => "🏠 بازگشت به منوی اصلی کاربر", 'callback_data' => 'main_menu_show']],
+            [['text' => "مشاهده تیکت‌های باز", 'callback_data' => 'admin_support_list_tickets:open_0']], // page 0
+            [['text' => "مشاهده همه تیکت‌ها", 'callback_data' => 'admin_support_list_tickets:all_0']], // page 0
+            [['text' => "جستجوی تیکت با ID", 'callback_data' => 'admin_support_prompt_ticket_id']],
+            [['text' => "🔙 بازگشت به پنل ادمین", 'callback_data' => 'admin_show_menu']],
         ];
         $keyboard = ['inline_keyboard' => $buttons];
 
@@ -63,6 +113,586 @@ class AdminController {
             $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
         }
     }
+
+    public function listSupportTickets(string $telegramId, int $chatId, ?int $messageId, string $filterAndPage) {
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+
+        list($filter, $page) = explode('_', $filterAndPage);
+        $page = (int)$page;
+        $perPage = 5; // Tickets per page
+        $offset = $page * $perPage;
+
+        $statusFilter = ($filter === 'all') ? null : $filter; // 'open', 'admin_reply', 'user_reply'
+        if ($filter === 'open') $statusFilter = ['open', 'user_reply', 'admin_reply']; // Show all non-closed
+
+        $tickets = $this->supportTicketModel->listTickets($statusFilter, $perPage, $offset);
+        $totalTickets = $this->supportTicketModel->countTickets($statusFilter);
+        $totalPages = ceil($totalTickets / $perPage);
+
+        $text = "لیست تیکت‌ها (" . ($filter === 'all' ? 'همه' : 'باز') . ") - صفحه " . ($page + 1) . " از {$totalPages}\n\n";
+        $ticketButtons = [];
+
+        if (empty($tickets)) {
+            $text .= "هیچ تیکتی برای نمایش وجود ندارد.";
+        } else {
+            foreach ($tickets as $ticket) {
+                $subjectPreview = !empty($ticket['subject']) ? mb_substr($ticket['subject'], 0, 20) . "..." : "بدون موضوع";
+                $userName = $ticket['user_first_name'] ?? "کاربر {$ticket['user_id']}";
+                $text .= "🎟️ #{$ticket['id']} - {$subjectPreview}\n";
+                $text .= "👤 {$userName} - Status: {$ticket['status']}\n";
+                $text .= "📅 " . (new \DateTime($ticket['last_message_at']))->format('Y-m-d H:i') . "\n---\n";
+                $ticketButtons[] = [['text' => "مشاهده/پاسخ تیکت #{$ticket['id']}", 'callback_data' => 'admin_support_view_ticket:' . $ticket['id']]];
+            }
+        }
+
+        // Pagination buttons
+        $paginationButtons = [];
+        if ($page > 0) $paginationButtons[] = ['text' => '⬅️ قبلی', 'callback_data' => "admin_support_list_tickets:{$filter}_" . ($page - 1)];
+        if (($page + 1) < $totalPages) $paginationButtons[] = ['text' => '➡️ بعدی', 'callback_data' => "admin_support_list_tickets:{$filter}_" . ($page + 1)];
+        if (!empty($paginationButtons)) $ticketButtons[] = $paginationButtons;
+
+        $ticketButtons[] = [['text' => "🔙 بازگشت به منوی پشتیبانی", 'callback_data' => 'admin_support_show_menu']];
+        $keyboard = ['inline_keyboard' => $ticketButtons];
+
+        if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
+        else $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+    }
+
+    public function promptViewTicketById(string $telegramId, int $chatId, ?int $messageId){
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+        $this->updateUserState($telegramId, ['action' => 'admin_awaiting_ticket_id_for_view']);
+        $text = "لطفا ID تیکت مورد نظر برای مشاهده را وارد کنید:";
+        if($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
+        else $this->telegramAPI->sendMessage($chatId, $text, null);
+    }
+
+
+    public function viewSupportTicket(string $telegramId, int $chatId, ?int $messageId, int $ticketId) {
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+        $this->updateUserState($telegramId, null); // Clear any input state initially
+
+        $ticket = $this->supportTicketModel->getTicketById($ticketId);
+        if (!$ticket) {
+            $this->telegramAPI->sendMessage($chatId, "خطا: تیکت با ID {$ticketId} یافت نشد.");
+            $this->showSupportTicketsMenu($telegramId, $chatId, $messageId);
+            return;
+        }
+
+        $messages = $this->supportTicketModel->getMessagesForTicket($ticketId);
+        $userName = $ticket['user_first_name'] ?? "کاربر";
+        $userIdentifier = $ticket['user_username'] ? "@{$ticket['user_username']}" : "(ID: {$ticket['user_id']})";
+
+
+        $text = "🎫 **مشاهده تیکت #{$ticketId}**\n";
+        $text .= "👤 کاربر: {$userName} {$userIdentifier}\n";
+        $text .= "ርዕሰ ጉዳይ: *{$ticket['subject']}*\n";
+        $text .= "وضعیت: {$ticket['status']}\n";
+        $text .= "آخرین بروزرسانی: " . (new \DateTime($ticket['last_message_at']))->format('Y-m-d H:i') . "\n";
+        $text .= "-------------------------------\n";
+
+        if (empty($messages)) {
+            $text .= "هنوز پیامی در این تیکت وجود ندارد.\n";
+        } else {
+            foreach ($messages as $msg) {
+                $sender = ($msg['sender_role'] === 'admin') ? "شما (ادمین)" : $userName;
+                $sentAt = (new \DateTime($msg['sent_at']))->format('Y-m-d H:i');
+                $text .= "🗣️ *{$sender}* ({$sentAt}):\n{$msg['message_text']}\n---\n";
+            }
+        }
+
+        $buttons = [];
+        if ($ticket['status'] !== 'closed') {
+            $buttons[] = [['text' => "✍️ پاسخ به تیکت", 'callback_data' => 'admin_support_prompt_reply:' . $ticketId]];
+            $buttons[] = [['text' => "🔒 بستن تیکت", 'callback_data' => 'admin_support_close_ticket:' . $ticketId]];
+        }
+        $buttons[] = [['text' => "🔙 بازگشت به لیست تیکت‌ها", 'callback_data' => 'admin_support_list_tickets:open_0']]; // Default to open tickets
+        $keyboard = ['inline_keyboard' => $buttons];
+
+        if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
+        else $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+    }
+
+    public function promptAdminReply(string $telegramId, int $chatId, ?int $messageId, int $ticketId) {
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+        $ticket = $this->supportTicketModel->getTicketById($ticketId);
+         if (!$ticket || $ticket['status'] === 'closed') {
+            $this->telegramAPI->editMessageText($chatId, $messageId ?? 0, "نمی‌توان به این تیکت پاسخ داد (بسته شده یا ناموجود).", null);
+            $this->showSupportTicketsMenu($telegramId, $chatId, null);
+            return;
+        }
+        $this->updateUserState($telegramId, ['action' => 'admin_awaiting_reply_to_ticket', 'ticket_id' => $ticketId]);
+        $text = "✍️ در حال پاسخ به تیکت #{$ticketId}.\nلطفا پیام خود را ارسال کنید (یا /cancel_admin_action برای لغو):";
+
+        if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
+        else $this->telegramAPI->sendMessage($chatId, $text, null);
+    }
+
+    // This method will be called when admin sends a text message while in 'admin_awaiting_reply_to_ticket' state
+    public function handleAdminSupportReply(string $adminTelegramId, int $adminChatId, string $replyText, int $ticketId) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+
+        $ticket = $this->supportTicketModel->getTicketById($ticketId);
+        if (!$ticket || $ticket['status'] === 'closed') {
+            $this->telegramAPI->sendMessage($adminChatId, "خطا: تیکت #{$ticketId} یافت نشد یا بسته شده است.");
+            $this->updateUserState($adminTelegramId, null);
+            return;
+        }
+
+        $messageAdded = $this->supportTicketModel->addMessage($ticketId, $adminTelegramId, 'admin', $replyText);
+        if ($messageAdded) {
+            $this->telegramAPI->sendMessage($adminChatId, "✅ پاسخ شما برای تیکت #{$ticketId} ارسال شد.");
+
+            // Notify user
+            $user = $this->userModel->findUserById($ticket['user_id']);
+            if ($user && !empty($user['encrypted_chat_id'])) {
+                try {
+                    $userChatId = EncryptionHelper::decrypt($user['encrypted_chat_id']);
+                    $userNotification = "💬 ادمین به تیکت پشتیبانی شما #{$ticketId} پاسخ داد:\n\n{$replyText}\n\nمی‌توانید از طریق ربات پاسخ خود را ارسال کنید.";
+                    $this->telegramAPI->sendMessage((int)$userChatId, $userNotification);
+                    // Set user state to allow direct reply
+                    $this->userModel->updateUser($user['telegram_id_hash'], ['user_state' => json_encode(['action' => 'awaiting_user_reply_to_ticket', 'ticket_id' => $ticketId])]);
+
+                } catch (\Exception $e) {
+                    error_log("Failed to notify user for ticket #{$ticketId} reply: " . $e->getMessage());
+                }
+            }
+        } else {
+            $this->telegramAPI->sendMessage($adminChatId, "خطا در ارسال پاسخ برای تیکت #{$ticketId}.");
+        }
+        $this->updateUserState($adminTelegramId, null); // Clear admin state
+        $this->viewSupportTicket($adminTelegramId, $adminChatId, null, $ticketId); // Show ticket again
+    }
+
+    public function handleCloseSupportTicket(string $telegramId, int $chatId, ?int $messageId, int $ticketId) {
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+
+        $ticket = $this->supportTicketModel->getTicketById($ticketId);
+        if (!$ticket) {
+             if($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, "تیکت یافت نشد.", null);
+             else $this->telegramAPI->sendMessage($chatId, "تیکت یافت نشد.", null);
+             return;
+        }
+
+        if ($this->supportTicketModel->updateTicketStatus($ticketId, 'closed', false)) { // false: don't update last_message_at on close
+            $responseText = "تیکت #{$ticketId} با موفقیت بسته شد.";
+            // Notify user
+            $user = $this->userModel->findUserById($ticket['user_id']);
+            if ($user && !empty($user['encrypted_chat_id'])) {
+                try {
+                    $userChatId = EncryptionHelper::decrypt($user['encrypted_chat_id']);
+                    $this->telegramAPI->sendMessage((int)$userChatId, "تیکت پشتیبانی شما #{$ticketId} توسط ادمین بسته شد.");
+                     // Clear user state if they were awaiting reply for this ticket
+                    $userState = $this->userModel->getUserState($user['telegram_id_hash']);
+                    if ($userState && isset($userState['action']) && $userState['action'] === 'awaiting_user_reply_to_ticket' && isset($userState['ticket_id']) && (int)$userState['ticket_id'] === $ticketId) {
+                        $this->userModel->updateUser($user['telegram_id_hash'], ['user_state' => null]);
+                    }
+                } catch (\Exception $e) {
+                    error_log("Failed to notify user about ticket #{$ticketId} closure: " . $e->getMessage());
+                }
+            }
+        } else {
+            $responseText = "خطا در بستن تیکت #{$ticketId}.";
+        }
+        if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $responseText, null);
+        else $this->telegramAPI->sendMessage($chatId, $responseText, null);
+
+        $this->showSupportTicketsMenu($telegramId, $chatId, null); // Go back to support menu
+    }
+
+
+    // --- Admin Statistics ---
+    public function showStatistics(string $telegramId, int $chatId, ?int $messageId = null) {
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+
+        $totalUsers = $this->userModel->getTotalUserCount();
+        $activeSubscriptions = $this->userModel->getActiveSubscriptionCount();
+        $activeFreeTrials = $this->userModel->getActiveFreeTrialCount();
+        $partnerConnected = $this->userModel->getPartnerConnectedCount();
+        $totalReferred = $this->userModel->getTotalReferredUsersCount();
+        // $totalRevenue = $this->transactionModel->getTotalRevenue(); // Assuming a TransactionModel
+
+        $text = "📊 **آمار کلی ربات** 📊\n\n";
+        $text .= "👤 کل کاربران ثبت‌نام شده: {$totalUsers}\n";
+        $text .= "💳 اشتراک‌های فعال (پولی): {$activeSubscriptions}\n";
+        $text .= "🎁 دوره‌های رایگان فعال: {$activeFreeTrials}\n";
+        $text .= "💞 کاربران متصل به همراه: {$partnerConnected} (جفت)\n";
+        $text .= "🔗 کل کاربران معرفی شده: {$totalReferred}\n";
+        // $text .= "💰 مجموع درآمد (تومان): " . number_format($totalRevenue) . "\n"; // Example
+
+        $buttons = [[['text' => "🔙 بازگشت به پنل ادمین", 'callback_data' => 'admin_show_menu']]];
+        $keyboard = ['inline_keyboard' => $buttons];
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        }
+    }
+
+    // --- User Management (Admin) ---
+    public function promptFindUser(string $telegramId, int $chatId, ?int $messageId = null) {
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+        $this->updateUserState($telegramId, ['action' => 'admin_awaiting_user_identifier']);
+        $text = "👤 **مدیریت کاربر**\n\nلطفا شناسه تلگرام (عددی) یا نام کاربری تلگرام (همراه با @) کاربری که می‌خواهید مدیریت کنید را وارد نمایید.\n\nبرای لغو /cancel_admin_action را ارسال کنید.";
+
+        $keyboard = [['inline_keyboard' => [[['text' => '🔙 بازگشت به پنل ادمین', 'callback_data' => 'admin_show_menu']]]]];
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        }
+    }
+
+    // This method will be called from public/index.php when admin sends user identifier
+    public function findAndShowUserManagementMenu(string $adminTelegramId, int $adminChatId, string $identifier) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+        $this->updateUserState($adminTelegramId, null); // Clear state
+
+        $foundUser = null;
+        if (ctype_digit($identifier)) {
+            $foundUser = $this->userModel->findUserByActualOrHashedTelegramId($identifier);
+        } elseif (strpos($identifier, '@') === 0) {
+            $usernameToSearch = substr($identifier, 1);
+            $foundUser = $this->userModel->findUserByUsername($usernameToSearch);
+        } else {
+             // Try as username without @
+            $foundUser = $this->userModel->findUserByUsername($identifier);
+            if(!$foundUser){ // If still not found, try as if it was a numeric ID string
+                 $foundUser = $this->userModel->findUserByActualOrHashedTelegramId($identifier);
+            }
+        }
+
+        if (!$foundUser) {
+            $this->telegramAPI->sendMessage($adminChatId, "کاربری با شناسه `{$identifier}` یافت نشد. لطفا دوباره تلاش کنید.", null, "Markdown");
+            $this->promptFindUser($adminTelegramId, $adminChatId, null); // Show prompt again
+            return;
+        }
+
+        // Decrypt user details for display
+        $displayFirstName = "[رمزگشایی ناموفق]";
+        $displayUsername = "[بدون نام کاربری]";
+        $displayRole = "[نامشخص]";
+        try {
+            if (!empty($foundUser['encrypted_first_name'])) $displayFirstName = EncryptionHelper::decrypt($foundUser['encrypted_first_name']);
+            if (!empty($foundUser['encrypted_username'])) $displayUsername = "@" . EncryptionHelper::decrypt($foundUser['encrypted_username']);
+            if (!empty($foundUser['encrypted_role'])) $displayRole = $this->translateRole(EncryptionHelper::decrypt($foundUser['encrypted_role']));
+        } catch (\Exception $e) {
+            error_log("Admin: Error decrypting user details for ID {$foundUser['id']}: " . $e->getMessage());
+        }
+
+        $text = "👤 **مدیریت کاربر: {$displayFirstName}** ({$displayUsername})\n";
+        $text .= "ID داخلی: `{$foundUser['id']}`\n";
+        $text .= "ID تلگرام (هش شده): `{$foundUser['telegram_id_hash']}`\n";
+        $text .= "نقش: {$displayRole}\n";
+        $text .= "وضعیت اشتراک: `{$foundUser['subscription_status']}`\n";
+        if ($foundUser['subscription_status'] === 'active' && !empty($foundUser['subscription_ends_at'])) {
+            $text .= "پایان اشتراک: " . (new \DateTime($foundUser['subscription_ends_at']))->format('Y-m-d H:i:s') . "\n";
+        } elseif ($foundUser['subscription_status'] === 'free_trial' && !empty($foundUser['trial_ends_at'])) {
+            $text .= "پایان دوره رایگان: " . (new \DateTime($foundUser['trial_ends_at']))->format('Y-m-d H:i:s') . "\n";
+        }
+        $text .= "تاریخ عضویت: " . (new \DateTime($foundUser['created_at']))->format('Y-m-d H:i:s') . "\n";
+        // Add more details as needed (e.g., partner info)
+
+        $buttons = [
+            [['text' => "✏️ ویرایش اشتراک کاربر", 'callback_data' => 'admin_user_edit_sub_prompt:' . $foundUser['id']]],
+            // [['text' => "🗑 حذف کاربر (به زودی)", 'callback_data' => 'admin_user_delete_confirm:' . $foundUser['id']]], // Future
+            [['text' => "🔙 جستجوی کاربر دیگر", 'callback_data' => 'admin_user_manage_prompt_find']],
+            [['text' => "🏠 بازگشت به پنل ادمین", 'callback_data' => 'admin_show_menu']],
+        ];
+        $keyboard = ['inline_keyboard' => $buttons];
+        $this->telegramAPI->sendMessage($adminChatId, $text, $keyboard, 'Markdown');
+    }
+
+    // Placeholder for translateRole, actual implementation may vary
+    private function translateRole($roleKey) {
+        $roles = ['menstruating' => 'فرد پریود شونده', 'partner' => 'همراه', 'prefer_not_to_say' => 'ترجیح داده نگوید'];
+        return $roles[$roleKey] ?? $roleKey;
+    }
+
+    private function translateCyclePhase($phaseKey) {
+        $phases = [
+            'menstruation' => 'پریود (قاعدگی)',
+            'follicular' => 'فولیکولار',
+            'ovulation' => 'تخمک‌گذاری',
+            'luteal' => 'لوتئال',
+            'pms' => 'PMS',
+            'any' => 'عمومی (همه فازها)'
+        ];
+        return $phases[$phaseKey] ?? $phaseKey;
+    }
+
+    // --- Broadcast Message ---
+    public function promptBroadcastMessage(string $adminTelegramId, int $adminChatId, ?int $messageId = null) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+        $this->updateUserState($adminTelegramId, ['action' => 'admin_awaiting_broadcast_message']);
+        $text = "📢 **ارسال پیام همگانی**\n\nلطفا متن پیامی که می‌خواهید برای همه کاربران ارسال شود را وارد کنید.\n\n⚠️ احتیاط: این پیام برای تمام کاربران ارسال خواهد شد.\n(برای لغو /cancel_admin_action را ارسال کنید)";
+
+        $keyboard = [['inline_keyboard' => [[['text' => '🔙 بازگشت به پنل ادمین', 'callback_data' => 'admin_show_menu']]]]];
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($adminChatId, $messageId, $text, $keyboard);
+        } else {
+            $this->telegramAPI->sendMessage($adminChatId, $text, $keyboard);
+        }
+    }
+
+    public function confirmBroadcastMessage(string $adminTelegramId, int $adminChatId, string $messageText) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+
+        $messageHash = md5($messageText);
+        $this->updateUserState($adminTelegramId, [
+            'action' => 'admin_confirming_broadcast',
+            'message_text' => $messageText,
+            'message_hash' => $messageHash
+        ]);
+
+        $text = "⚠️ **تایید ارسال پیام همگانی** ⚠️\n\nشما قصد دارید پیام زیر را برای همه کاربران ارسال کنید:\n\n---\n{$messageText}\n---\n\nآیا مطمئن هستید؟";
+        $buttons = [
+            [['text' => "✅ بله، ارسال کن", 'callback_data' => 'admin_broadcast_send_confirm:' . $messageHash]],
+            [['text' => "❌ خیر، لغو کن", 'callback_data' => 'admin_broadcast_prompt']]
+        ];
+        $keyboard = ['inline_keyboard' => $buttons];
+        $this->telegramAPI->sendMessage($adminChatId, $text, $keyboard);
+    }
+
+    public function handleSendBroadcastMessage(string $adminTelegramId, int $adminChatId, ?int $messageId, string $confirmedHash) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+
+        $stateInfo = $this->getCurrentAdminState($adminTelegramId);
+
+        if (!$stateInfo || ($stateInfo['action'] ?? '') !== 'admin_confirming_broadcast' || ($stateInfo['message_hash'] ?? '') !== $confirmedHash) {
+            $this->telegramAPI->sendMessage($adminChatId, "خطا: تاییدیه ارسال پیام نامعتبر است یا منقضی شده. لطفا دوباره تلاش کنید.");
+            $this->updateUserState($adminTelegramId, null);
+            $this->showAdminMenu($adminTelegramId, $adminChatId, $messageId);
+            return;
+        }
+
+        $messageText = $stateInfo['message_text'];
+        $this->updateUserState($adminTelegramId, null);
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($adminChatId, $messageId, "⏳ در حال ارسال پیام همگانی... لطفا صبر کنید.", null);
+        } else {
+            $this->telegramAPI->sendMessage($adminChatId, "⏳ در حال ارسال پیام همگانی... لطفا صبر کنید.");
+        }
+
+        $users = $this->userModel->getAllUsersForBroadcast();
+        $sentCount = 0;
+        $failedCount = 0;
+        $blockedCount = 0;
+
+        foreach ($users as $user) {
+            if (empty($user['encrypted_chat_id'])) continue;
+            try {
+                $chatIdToSend = EncryptionHelper::decrypt($user['encrypted_chat_id']);
+                $sendResult = $this->telegramAPI->sendMessage((int)$chatIdToSend, $messageText);
+                if ($sendResult && $sendResult['ok']) {
+                    $sentCount++;
+                } else {
+                    if (isset($sendResult['error_code']) && ($sendResult['error_code'] == 403 || $sendResult['error_code'] == 400)) {
+                        $blockedCount++;
+                         // $this->userModel->updateUserByDBId($user['id'], ['is_bot_blocked' => 1]); // Assumes updateUserByDBId exists
+                    } else {
+                        $failedCount++;
+                    }
+                    error_log("Broadcast failed for user ID {$user['id']}: " . ($sendResult['description'] ?? 'Unknown error'));
+                }
+            } catch (\Exception $e) {
+                $failedCount++;
+                error_log("Broadcast exception for user ID {$user['id']}: " . $e->getMessage());
+            }
+            if (($sentCount + $failedCount + $blockedCount) % 20 == 0) {
+                usleep(500000);
+            }
+        }
+
+        $summaryText = "✅ عملیات ارسال پیام همگانی انجام شد.\n\n";
+        $summaryText .= "تعداد ارسال موفق: {$sentCount}\n";
+        $summaryText .= "تعداد ارسال ناموفق (خطا): {$failedCount}\n";
+        $summaryText .= "تعداد کاربران مسدود کرده ربات: {$blockedCount}\n";
+
+        $this->telegramAPI->sendMessage($adminChatId, $summaryText);
+        $this->showAdminMenu($adminTelegramId, $adminChatId, null);
+    }
+
+
+    public function promptEditUserSubscription(string $adminTelegramId, int $adminChatId, ?int $messageId, int $userIdToEdit) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+
+        $user = $this->userModel->findUserById($userIdToEdit);
+        if (!$user) {
+            $this->telegramAPI->editMessageText($adminChatId, $messageId ?? 0, "خطا: کاربر یافت نشد.", null);
+            return;
+        }
+
+        $displayFirstName = "[کاربر]";
+        try { if(!empty($user['encrypted_first_name'])) $displayFirstName = EncryptionHelper::decrypt($user['encrypted_first_name']); } catch (\Exception $e) {}
+
+        $text = "✏️ **ویرایش اشتراک کاربر: {$displayFirstName} (ID: {$userIdToEdit})**\n\n";
+        $text .= "وضعیت فعلی: `{$user['subscription_status']}`\n";
+        if ($user['active_plan_id']) {
+            $currentPlan = $this->subscriptionPlanModel->getPlanById($user['active_plan_id']);
+            $text .= "طرح فعلی: " . ($currentPlan ? $currentPlan['name'] : "ID: {$user['active_plan_id']}") . "\n";
+        }
+        if ($user['subscription_ends_at']) {
+            $text .= "تاریخ پایان فعلی: " . (new \DateTime($user['subscription_ends_at']))->format('Y-m-d H:i:s') . "\n";
+        } else if ($user['trial_ends_at'] && $user['subscription_status'] === 'free_trial'){
+             $text .= "تاریخ پایان دوره رایگان: " . (new \DateTime($user['trial_ends_at']))->format('Y-m-d H:i:s') . "\n";
+        }
+        $text .= "\n---\n";
+
+        $plans = $this->subscriptionPlanModel->getActivePlans();
+        if (!empty($plans)) {
+            $text .= "طرح‌های اشتراک موجود:\n";
+            foreach ($plans as $plan) {
+                $text .= "- `{$plan['id']}`: {$plan['name']} ({$plan['duration_months']} ماهه - " . number_format($plan['price']) . " تومان)\n";
+            }
+            $text .= "\nلطفا ID طرح جدید را وارد کنید.\n";
+        } else {
+            $text .= "هیچ طرح اشتراک فعالی برای انتخاب وجود ندارد.\n";
+        }
+        $text .= "یا برای تغییر فقط تاریخ انقضا طرح فعلی (اگر دارد) `0` را وارد کنید.\n";
+        $text .= "یا برای لغو اشتراک فعلی و رایگان کردن کاربر `remove` را وارد کنید.\n";
+        $text .= "(برای لغو عملیات /cancel_admin_action را ارسال کنید)";
+
+        $this->updateUserState($adminTelegramId, ['action' => 'admin_editing_user_sub', 'step' => 'awaiting_plan_choice', 'user_id_to_edit' => $userIdToEdit]);
+
+        $keyboard = [['inline_keyboard' => [[['text' => '🔙 بازگشت به مدیریت کاربر', 'callback_data' => 'admin_user_manage_show:' . $userIdToEdit ]]]]]; // Requires findAndShow to be callable via callback
+        if($messageId) $this->telegramAPI->editMessageText($adminChatId, $messageId, $text, $keyboard, 'Markdown');
+        else $this->telegramAPI->sendMessage($adminChatId, $text, $keyboard, 'Markdown');
+    }
+
+    public function processUserSubscriptionPlanChoice(string $adminTelegramId, int $adminChatId, int $userIdToEdit, string $chosenPlanInput) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+
+        $chosenPlanInput = trim(strtolower($chosenPlanInput));
+        $user = $this->userModel->findUserById($userIdToEdit);
+        if (!$user) {
+            $this->telegramAPI->sendMessage($adminChatId, "خطا: کاربر برای ویرایش اشتراک یافت نشد.");
+            $this->updateUserState($adminTelegramId, null);
+            return;
+        }
+
+        $planIdToAssign = null;
+        $nextStepState = 'awaiting_expiry';
+
+        if ($chosenPlanInput === 'remove') {
+            // Mark for removal, expiry will be set to past or null.
+            $planIdToAssign = 'remove'; // Special keyword
+        } elseif ($chosenPlanInput === '0') {
+            if ($user['active_plan_id']) {
+                $planIdToAssign = $user['active_plan_id']; // Keep current plan
+            } else {
+                $this->telegramAPI->sendMessage($adminChatId, "کاربر طرح فعال جاری ندارد که فقط تاریخ انقضای آن تغییر کند. لطفا یک طرح انتخاب کنید یا `remove` را برای رایگان کردن وارد نمایید.");
+                $this->updateUserState($adminTelegramId, ['action' => 'admin_editing_user_sub', 'step' => 'awaiting_plan_choice', 'user_id_to_edit' => $userIdToEdit]); // Ask again
+                return;
+            }
+        } elseif (ctype_digit($chosenPlanInput)) {
+            $planIdToAssign = (int)$chosenPlanInput;
+            $planExists = $this->subscriptionPlanModel->getPlanById($planIdToAssign);
+            if (!$planExists) {
+                $this->telegramAPI->sendMessage($adminChatId, "طرح با ID وارد شده یافت نشد. لطفا ID معتبر وارد کنید.");
+                $this->updateUserState($adminTelegramId, ['action' => 'admin_editing_user_sub', 'step' => 'awaiting_plan_choice', 'user_id_to_edit' => $userIdToEdit]); // Ask again
+                return;
+            }
+        } else {
+            $this->telegramAPI->sendMessage($adminChatId, "ورودی نامعتبر. لطفا ID طرح، 0، یا `remove` را وارد کنید.");
+            $this->updateUserState($adminTelegramId, ['action' => 'admin_editing_user_sub', 'step' => 'awaiting_plan_choice', 'user_id_to_edit' => $userIdToEdit]); // Ask again
+            return;
+        }
+
+        $text = "تاریخ پایان اشتراک جدید را وارد کنید (YYYY-MM-DD HH:MM:SS).\n";
+        $text .= "برای اشتراک بدون تاریخ انقضا (نامحدود) `never` را وارد کنید.\n";
+        $text .= "برای رایگان کردن و حذف تاریخ انقضا (اگر `remove` را انتخاب کردید) `remove` را مجدد وارد کنید.\n";
+        $text .= "(برای لغو عملیات /cancel_admin_action را ارسال کنید)";
+
+        $this->updateUserState($adminTelegramId, ['action' => 'admin_editing_user_sub', 'step' => $nextStepState, 'user_id_to_edit' => $userIdToEdit, 'plan_id_to_assign' => $planIdToAssign]);
+        $this->telegramAPI->sendMessage($adminChatId, $text);
+    }
+
+    public function handleUpdateUserSubscription(string $adminTelegramId, int $adminChatId, int $userIdToEdit, $planIdOrKeyword, string $expiryDateString) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+        $this->updateUserState($adminTelegramId, null); // Clear state
+
+        $user = $this->userModel->findUserById($userIdToEdit);
+        if (!$user) {
+            $this->telegramAPI->sendMessage($adminChatId, "خطا: کاربر یافت نشد.");
+            return;
+        }
+
+        $updateData = [];
+        $expiryDateString = trim(strtolower($expiryDateString));
+
+        if ($planIdOrKeyword === 'remove' || $expiryDateString === 'remove') {
+            $updateData['subscription_status'] = 'none'; // Or 'expired' or 'cancelled'
+            $updateData['active_plan_id'] = null;
+            $updateData['subscription_ends_at'] = null;
+            $updateData['subscription_starts_at'] = null;
+            // Also nullify trial if it was active
+            if ($user['subscription_status'] === 'free_trial') {
+                $updateData['trial_ends_at'] = null;
+            }
+        } else {
+            $planIdToAssign = (int)$planIdOrKeyword;
+            $plan = $this->subscriptionPlanModel->getPlanById($planIdToAssign);
+            if (!$plan && $planIdToAssign !== 0) { // 0 means keep current plan, just change expiry
+                 $this->telegramAPI->sendMessage($adminChatId, "خطا: طرح اشتراک انتخاب شده نامعتبر است.");
+                 // Re-prompt or send back to user management menu
+                 $this->findAndShowUserManagementMenu($adminTelegramId, $adminChatId, (string)$user['telegram_id_hash']); // Assuming this works with hash
+                 return;
+            }
+
+            $updateData['active_plan_id'] = $planIdToAssign === 0 ? $user['active_plan_id'] : $planIdToAssign;
+            if ($updateData['active_plan_id'] === null && $planIdToAssign !== 0) {
+                 $this->telegramAPI->sendMessage($adminChatId, "خطا: کاربر طرح فعالی برای تمدید ندارد و طرح جدیدی هم انتخاب نشد.");
+                 $this->findAndShowUserManagementMenu($adminTelegramId, $adminChatId, (string)$user['telegram_id_hash']);
+                 return;
+            }
+
+            $updateData['subscription_status'] = 'active';
+            $updateData['subscription_starts_at'] = date('Y-m-d H:i:s'); // Start subscription now
+
+            if ($expiryDateString === 'never') {
+                $updateData['subscription_ends_at'] = null;
+            } else {
+                try {
+                    $newExpiry = new \DateTime($expiryDateString);
+                    $updateData['subscription_ends_at'] = $newExpiry->format('Y-m-d H:i:s');
+                } catch (\Exception $e) {
+                    $this->telegramAPI->sendMessage($adminChatId, "فرمت تاریخ انقضا نامعتبر است. لطفا از YYYY-MM-DD HH:MM:SS استفاده کنید یا `never`.");
+                    // Re-prompt for expiry or send back
+                    $this->updateUserState($adminTelegramId, ['action' => 'admin_editing_user_sub', 'step' => 'awaiting_expiry', 'user_id_to_edit' => $userIdToEdit, 'plan_id_to_assign' => $planIdOrKeyword]);
+                    return;
+                }
+            }
+            // If they were on trial and now have an active sub, clear trial end date
+            $updateData['trial_ends_at'] = null;
+        }
+
+        if ($this->userModel->updateUser($user['telegram_id_hash'], $updateData)) {
+            $this->telegramAPI->sendMessage($adminChatId, "اشتراک کاربر با موفقیت به‌روزرسانی شد.");
+            // Notify user
+            if(!empty($user['encrypted_chat_id'])){
+                try {
+                    $userChatId = EncryptionHelper::decrypt($user['encrypted_chat_id']);
+                    $notifyText = "مدیر سیستم اشتراک شما را به‌روزرسانی کرد.\n";
+                    if($updateData['subscription_status'] === 'active'){
+                        $notifyText .= "وضعیت جدید: فعال ✅";
+                        if($updateData['subscription_ends_at']) $notifyText .= "\nتاریخ پایان جدید: " . $updateData['subscription_ends_at'];
+                        else $notifyText .= "\nتاریخ پایان: نامحدود";
+                    } else {
+                         $notifyText .= "وضعیت جدید: غیرفعال/لغو شده";
+                    }
+                    $this->telegramAPI->sendMessage((int)$userChatId, $notifyText);
+                } catch (\Exception $e) {error_log("Failed to notify user {$user['id']} of subscription change: " . $e->getMessage());}
+            }
+        } else {
+            $this->telegramAPI->sendMessage($adminChatId, "خطا در به‌روزرسانی اشتراک کاربر.");
+        }
+        $this->findAndShowUserManagementMenu($adminTelegramId, $adminChatId, (string)$user['telegram_id_hash']); // Show updated info
+    }
+
 
     // --- Subscription Plan Management ---
     public function showSubscriptionPlansAdmin(string $telegramId, int $chatId, ?int $messageId = null) {
