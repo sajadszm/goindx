@@ -1,0 +1,68 @@
+<?php
+/**
+ * Plugin Name:       Telegram Live Chat
+ * Plugin URI:        https://example.com/plugins/telegram-live-chat/
+ * Description:       Integrates a live chat widget on your website that connects with support agents via Telegram.
+ * Version:           0.1.0
+ * Author:            Your Name
+ * Author URI:        https://example.com/
+ * License:           GPL-2.0+
+ * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
+ * Text Domain:       telegram-live-chat
+ * Domain Path:       /languages
+ */
+
+// If this file is called directly, abort.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
+/**
+ * Define plugin constants
+ */
+define( 'TLC_VERSION', '0.1.0' );
+define( 'TLC_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'TLC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'TLC_PLUGIN_PREFIX', 'tlc_' ); // Telegram Live Chat
+
+/**
+ * The code that runs during plugin activation.
+ */
+function activate_telegram_live_chat() {
+    require_once TLC_PLUGIN_DIR . 'includes/class-tlc-activator.php';
+    TLC_Activator::activate();
+}
+
+/**
+ * The code that runs during plugin deactivation.
+ */
+function deactivate_telegram_live_chat() {
+    require_once TLC_PLUGIN_DIR . 'includes/class-tlc-deactivator.php';
+    TLC_Deactivator::deactivate();
+}
+
+register_activation_hook( __FILE__, 'activate_telegram_live_chat' );
+register_deactivation_hook( __FILE__, 'deactivate_telegram_live_chat' );
+
+/**
+ * The core plugin class that is used to define internationalization,
+ * admin-specific hooks, and public-facing site hooks.
+ */
+require TLC_PLUGIN_DIR . 'includes/class-tlc-plugin.php';
+
+/**
+ * Begins execution of the plugin.
+ *
+ * Since everything within the plugin is registered via hooks,
+ * then kicking off the plugin from this point in the file does
+ * not affect the page life cycle.
+ *
+ * @since    0.1.0
+ */
+function run_telegram_live_chat() {
+
+    $plugin = new TLC_Plugin();
+    $plugin->run();
+
+}
+run_telegram_live_chat();

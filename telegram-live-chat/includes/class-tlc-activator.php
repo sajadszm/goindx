@@ -1,0 +1,93 @@
+<?php
+/**
+ * Fired during plugin activation.
+ *
+ * This class defines all code necessary to run during the plugin's activation.
+ *
+ * @since      0.1.0
+ * @package    TLC
+ * @subpackage TLC/includes
+ * @author     Your Name <email@example.com>
+ */
+class TLC_Activator {
+
+    /**
+     * Short Description. (use period)
+     *
+     * Long Description.
+     *
+     * @since    0.1.0
+     */
+    public static function activate() {
+        // Create database tables
+        self::create_tables();
+
+        // Set default options
+        self::set_default_options();
+
+        // Flush rewrite rules if any custom post types or taxonomies are registered (not in this phase)
+        // flush_rewrite_rules();
+    }
+
+    /**
+     * Create database tables needed for the plugin.
+     */
+    private static function create_tables() {
+        global $wpdb;
+        $charset_collate = $wpdb->get_charset_collate();
+        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+
+        $table_sessions_name = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
+        $sql_sessions = "CREATE TABLE $table_sessions_name (
+            session_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            visitor_token VARCHAR(64) NOT NULL,
+            wp_user_id BIGINT UNSIGNED NULL,
+            start_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_active_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            status VARCHAR(20) NOT NULL DEFAULT 'active',
+            visitor_ip VARCHAR(45) NULL,
+            visitor_user_agent TEXT NULL,
+            initial_page_url TEXT NULL,
+            PRIMARY KEY  (session_id),
+            UNIQUE KEY visitor_token (visitor_token),
+            KEY wp_user_id (wp_user_id),
+            KEY status (status)
+        ) $charset_collate;";
+        dbDelta( $sql_sessions );
+
+        $table_messages_name = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
+        $sql_messages = "CREATE TABLE $table_messages_name (
+            message_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            session_id BIGINT UNSIGNED NOT NULL,
+            sender_type VARCHAR(10) NOT NULL, -- 'visitor', 'agent', 'system'
+            telegram_user_id BIGINT NULL,
+            message_content TEXT NOT NULL,
+            timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            telegram_message_id BIGINT NULL,
+            is_read BOOLEAN NOT NULL DEFAULT 0,
+            PRIMARY KEY  (message_id),
+            KEY session_id (session_id),
+            KEY sender_type (sender_type),
+            KEY telegram_message_id (telegram_message_id)
+        ) $charset_collate;";
+        dbDelta( $sql_messages );
+    }
+
+    /**
+     * Set default plugin options.
+     */
+    private static function set_default_options() {
+        $default_options = array(
+            TLC_PLUGIN_PREFIX . 'bot_token' => '',
+            TLC_PLUGIN_PREFIX . 'admin_user_ids' => '',
+            TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
+            // Add more default options here as needed
+        );
+
+        foreach ($default_options as $option_name => $option_value) {
+            if ( get_option( $option_name ) === false ) {
+                update_option( $option_name, $option_value );
+            }
+        }
+    }
+}

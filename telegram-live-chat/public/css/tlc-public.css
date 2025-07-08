@@ -1,0 +1,132 @@
+/**
+ * All of the CSS for your public-facing functionality should be
+ * included in this file.
+ */
+
+.tlc-widget-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    background-color: #0088cc;
+    color: white;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 60px;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+    z-index: 99998;
+}
+
+.tlc-chat-widget {
+    position: fixed;
+    bottom: 90px;
+    right: 20px;
+    width: 320px;
+    max-height: 450px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+    display: none; /* Hidden by default */
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 99999;
+}
+
+.tlc-chat-widget.active {
+    display: flex;
+}
+
+.tlc-chat-header {
+    background-color: #0073aa; /* WordPress blue */
+    color: white;
+    padding: 10px 15px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tlc-chat-header-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.tlc-chat-messages {
+    flex-grow: 1;
+    padding: 10px;
+    overflow-y: auto;
+    min-height: 200px;
+    background-color: #f9f9f9;
+    border-bottom: 1px solid #eee;
+}
+
+.tlc-chat-messages .tlc-message {
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.tlc-chat-messages .tlc-message.visitor {
+    background-color: #dcf8c6; /* WhatsApp like green */
+    margin-left: auto;
+    text-align: right;
+}
+
+.tlc-chat-messages .tlc-message.agent {
+    background-color: #e0e0e0;
+    margin-right: auto;
+    text-align: left;
+}
+
+.tlc-chat-messages .tlc-message.system {
+    background-color: #f0f0f0;
+    color: #555;
+    font-style: italic;
+    text-align: center;
+    font-size: 0.9em;
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 100%;
+}
+
+
+.tlc-chat-input-area {
+    display: flex;
+    padding: 10px;
+    border-top: 1px solid #eee;
+    background-color: #f1f1f1;
+}
+
+.tlc-chat-input-area textarea {
+    flex-grow: 1;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    resize: none;
+    height: 40px; /* Initial height */
+    margin-right: 8px;
+    box-sizing: border-box;
+}
+
+.tlc-chat-input-area button {
+    padding: 0 15px;
+    background-color: #0073aa;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.tlc-chat-input-area button:hover {
+    background-color: #005a87;
+}
