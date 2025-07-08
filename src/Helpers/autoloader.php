@@ -18,11 +18,26 @@ spl_autoload_register(function ($className) {
             require_once $projectSpecificFile;
         } else {
             // For classes like `Database` which is outside `src` but used by `src` classes.
-            $configFile = dirname(dirname(__FILE__)) . '/config/' . str_replace('\\', '/', $className) . '.php';
+            $baseProjectPath = dirname(dirname(__FILE__)); // Project root
+
+            if ($className === 'Database') {
+                $configFile = $baseProjectPath . '/config/database.php'; // Specific fix for Database class
+            } else {
+                // General config path (if other classes were in config and matched case)
+                $configFile = $baseProjectPath . '/config/' . str_replace('\\', '/', $className) . '.php';
+            }
+
             if (file_exists($configFile)) {
                 require_once $configFile;
             } else {
-                 error_log("Autoloader: Could not load class $className. File not found: $file nor $projectSpecificFile nor $configFile");
+                 // Log the paths it tried for the Database class specifically if it failed for Database
+                if ($className === 'Database') {
+                    $triedPath1 = $baseProjectPath . '/config/database.php'; // lowercase
+                    $triedPath2 = $baseProjectPath . '/config/Database.php'; // original case
+                    error_log("Autoloader: Could not load class Database. File not found: $file nor $projectSpecificFile nor $triedPath1 nor $triedPath2");
+                } else {
+                    error_log("Autoloader: Could not load class $className. File not found: $file nor $projectSpecificFile nor " . ($baseProjectPath . '/config/' . str_replace('\\', '/', $className) . '.php'));
+                }
             }
         }
     }
