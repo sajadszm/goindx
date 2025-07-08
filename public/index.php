@@ -267,6 +267,9 @@ try {
                 case 'user_show_tutorial_article':
                     $userController->handleShowTutorialArticle($userId, $chatId, $messageId, (int)$val1);
                     break;
+                case 'user_show_referral_info': // Added this case
+                    $userController->handleShowReferralProgram($userId, $chatId, $messageId);
+                    break;
                 case 'user_enter_referral_code_prompt':
                     $userController->handleEnterReferralCodePrompt($userId, $chatId, $messageId);
                     break;

@@ -189,10 +189,79 @@ class UserController {
         }
 
         if ((string)$chatId === ADMIN_TELEGRAM_ID) {
-            $buttons[] = [['text' => "👑 پنل ادمین", 'callback_data' => 'admin_show_menu']];
+            $buttons[] = ['text' => "👑 پنل ادمین", 'callback_data' => 'admin_show_menu'];
         }
-        $keyboard = ['inline_keyboard' => $buttons];
-        $this->telegramAPI->sendMessage($chatId, $menuText, $keyboard, 'Markdown'); // Keep as Markdown (classic)
+
+        // Chunk buttons into rows of 2
+        $final_button_rows = [];
+        for ($i = 0; $i < count($buttons); $i += 2) {
+            $row = [$buttons[$i]]; // First button in the row
+            if (isset($buttons[$i+1])) {
+                $row[] = $buttons[$i+1]; // Second button if it exists
+            }
+            $final_button_rows[] = $row;
+        }
+        // Ensure $buttons was an array of button definitions, not already rows.
+        // The previous logic was adding arrays like [['text'=>..., 'cb'=>...]] to $buttons.
+        // So $buttons was already an array of rows. Let's adjust.
+
+        $flat_buttons_for_grouping = [];
+        if ($decryptedRole === 'menstruating') {
+            $flat_buttons_for_grouping[] = ['text' => "🩸 ثبت/ویرایش اطلاعات دوره", 'callback_data' => 'cycle_log_period_start_prompt'];
+            $flat_buttons_for_grouping[] = ['text' => "📝 ثبت علائم روزانه", 'callback_data' => 'symptom_log_start:today'];
+        }
+
+        if (empty($user['partner_telegram_id_hash'])) {
+            if (empty($user['invitation_token'])) {
+                $flat_buttons_for_grouping[] = ['text' => "💌 دعوت از همراه", 'callback_data' => 'partner_invite'];
+            } else {
+                $flat_buttons_for_grouping[] = ['text' => "🔗 لغو دعوتنامه ارسال شده", 'callback_data' => 'partner_cancel_invite'];
+            }
+            $flat_buttons_for_grouping[] = ['text' => "🤝 پذیرش دعوتنامه (با کد)", 'callback_data' => 'partner_accept_prompt'];
+        } else {
+            $partnerHashedId = $user['partner_telegram_id_hash'];
+            $partnerUser = $this->userModel->findUserByTelegramId($partnerHashedId);
+            $partnerFirstName = "همراه شما"; // Default
+            if ($partnerUser && !empty($partnerUser['encrypted_first_name'])) {
+                try { $partnerFirstName = EncryptionHelper::decrypt($partnerUser['encrypted_first_name']); } catch (\Exception $e) {}
+            }
+            // $menuText is already updated with partner info
+            $flat_buttons_for_grouping[] = ['text' => "💔 قطع اتصال از {$partnerFirstName}", 'callback_data' => 'partner_disconnect'];
+        }
+
+        $flat_buttons_for_grouping[] = ['text' => "⚙️ تنظیمات", 'callback_data' => 'settings_show'];
+        $flat_buttons_for_grouping[] = ['text' => "راهنما ❓", 'callback_data' => 'show_guidance'];
+        $flat_buttons_for_grouping[] = ['text' => "💬 پشتیبانی", 'callback_data' => 'support_request_start'];
+        $flat_buttons_for_grouping[] = ['text' => "ℹ️ درباره ما", 'callback_data' => 'show_about_us'];
+        $flat_buttons_for_grouping[] = ['text' => "📚 آموزش ها", 'callback_data' => 'user_show_tutorial_topics'];
+        $flat_buttons_for_grouping[] = ['text' => "🎁 معرفی دوستان", 'callback_data' => 'user_show_referral_info'];
+
+        $showSubscriptionButton = true;
+        if (isset($user['subscription_status']) && $user['subscription_status'] === 'active' && !empty($user['subscription_ends_at'])) {
+            try {
+                $expiryDate = new \DateTime($user['subscription_ends_at']);
+                if ($expiryDate > new \DateTime()) $showSubscriptionButton = false;
+            } catch (\Exception $e) { /* keep true if date is invalid */ }
+        }
+        if ($showSubscriptionButton) {
+             $flat_buttons_for_grouping[] = ['text' => "خرید اشتراک 💳", 'callback_data' => 'sub_show_plans'];
+        }
+
+        if ((string)$chatId === ADMIN_TELEGRAM_ID) {
+            $flat_buttons_for_grouping[] = ['text' => "👑 پنل ادمین", 'callback_data' => 'admin_show_menu'];
+        }
+
+        $grouped_buttons = [];
+        for ($i = 0; $i < count($flat_buttons_for_grouping); $i += 2) {
+            $row = [$flat_buttons_for_grouping[$i]];
+            if (isset($flat_buttons_for_grouping[$i+1])) {
+                $row[] = $flat_buttons_for_grouping[$i+1];
+            }
+            $grouped_buttons[] = $row;
+        }
+
+        $keyboard = ['inline_keyboard' => $grouped_buttons];
+        $this->telegramAPI->sendMessage($chatId, $menuText, $keyboard, 'Markdown');
     }
 
     // --- REFERRAL PROGRAM USER FLOW ---
@@ -340,12 +409,26 @@ class UserController {
         }
 
         $text = "📚 **موضوعات آموزشی**\n\nلطفا یک موضوع را برای مطالعه انتخاب کنید:";
-        $topicButtons = [];
-        if (empty($accessibleTopics)) $text = "در حال حاضر هیچ موضوع آموزشی برای شما در دسترس نیست.";
-        else foreach ($accessibleTopics as $topic) $topicButtons[] = [['text' => $topic['title'], 'callback_data' => 'user_show_tutorial_topic_content:' . $topic['id']]];
+        $topic_buttons_flat = [];
+        if (empty($accessibleTopics)) {
+            $text = "در حال حاضر هیچ موضوع آموزشی برای شما در دسترس نیست.";
+        } else {
+            foreach ($accessibleTopics as $topic) {
+                $topic_buttons_flat[] = ['text' => $topic['title'], 'callback_data' => 'user_show_tutorial_topic_content:' . $topic['id']];
+            }
+        }
 
-        $keyboard = ['inline_keyboard' => $topicButtons];
-        $keyboard['inline_keyboard'][] = [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']];
+        $grouped_topic_buttons = [];
+        for ($i = 0; $i < count($topic_buttons_flat); $i += 2) {
+            $row = [$topic_buttons_flat[$i]];
+            if (isset($topic_buttons_flat[$i+1])) {
+                $row[] = $topic_buttons_flat[$i+1];
+            }
+            $grouped_topic_buttons[] = $row;
+        }
+        $grouped_topic_buttons[] = [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']];
+
+        $keyboard = ['inline_keyboard' => $grouped_topic_buttons];
         if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
         else $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
     }
@@ -377,13 +460,27 @@ class UserController {
         }
 
         $text = "📚 **{$topic['title']}**\n\nمطالب این بخش:\n\n";
-        $articleButtons = [];
-        if (empty($accessibleArticles)) $text .= "متاسفانه هنوز مطلبی برای این موضوع اضافه نشده است.";
-        else foreach ($accessibleArticles as $article) $articleButtons[] = [['text' => $article['title'], 'callback_data' => 'user_show_tutorial_article:' . $article['id']]];
+        $article_buttons_flat = [];
+        if (empty($accessibleArticles)) {
+            $text .= "متاسفانه هنوز مطلبی برای این موضوع اضافه نشده است.";
+        } else {
+            foreach ($accessibleArticles as $article) {
+                $article_buttons_flat[] = ['text' => $article['title'], 'callback_data' => 'user_show_tutorial_article:' . $article['id']];
+            }
+        }
 
-        $keyboard = ['inline_keyboard' => $articleButtons];
-        $keyboard['inline_keyboard'][] = [['text' => "🔙 بازگشت به لیست موضوعات", 'callback_data' => 'user_show_tutorial_topics']];
-        $keyboard['inline_keyboard'][] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
+        $grouped_article_buttons = [];
+        for ($i = 0; $i < count($article_buttons_flat); $i += 2) {
+            $row = [$article_buttons_flat[$i]];
+            if (isset($article_buttons_flat[$i+1])) {
+                $row[] = $article_buttons_flat[$i+1];
+            }
+            $grouped_article_buttons[] = $row;
+        }
+        $grouped_article_buttons[] = [['text' => "🔙 بازگشت به لیست موضوعات", 'callback_data' => 'user_show_tutorial_topics']];
+        $grouped_article_buttons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
+
+        $keyboard = ['inline_keyboard' => $grouped_article_buttons];
         if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
         else $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
     }
@@ -435,15 +532,20 @@ class UserController {
         }
 
         $text = "💎 طرح‌های اشتراک «همراه من»:\n\n";
-        $planButtons = [];
+        $plan_buttons_flat = [];
         foreach ($plans as $plan) {
             $priceFormatted = number_format($plan['price']);
             $buttonText = "{$plan['name']} ({$plan['duration_months']} ماهه) - {$priceFormatted} تومان";
-            $planButtons[] = [['text' => $buttonText, 'callback_data' => 'sub_select_plan:' . $plan['id']]];
+            $plan_buttons_flat[] = ['text' => $buttonText, 'callback_data' => 'sub_select_plan:' . $plan['id']];
         }
 
-        $keyboard = ['inline_keyboard' => $planButtons];
-        $keyboard['inline_keyboard'][] = [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']];
+        $grouped_plan_buttons = [];
+        for ($i = 0; $i < count($plan_buttons_flat); $i += 1) { // Show each plan on its own row for clarity
+            $grouped_plan_buttons[] = [$plan_buttons_flat[$i]];
+        }
+        $grouped_plan_buttons[] = [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']];
+
+        $keyboard = ['inline_keyboard' => $grouped_plan_buttons];
 
         if ($messageId) {
             $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
@@ -560,12 +662,25 @@ class UserController {
 
     public function handleSettings($telegramId, $chatId, $messageId = null) {
         $text = "⚙️ تنظیمات\n\nچه کاری می‌خواهید انجام دهید؟";
-        $buttons = [
-            [['text' => "⏰ تنظیم زمان اعلان‌ها", 'callback_data' => 'settings_set_notify_time_prompt']],
-            [['text' => "🗑 حذف حساب کاربری", 'callback_data' => 'user_delete_account_prompt']],
-            [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']],
+
+        $settings_buttons_flat = [
+            ['text' => "⏰ تنظیم زمان اعلان‌ها", 'callback_data' => 'settings_set_notify_time_prompt'],
+            ['text' => "🗑 حذف حساب کاربری", 'callback_data' => 'user_delete_account_prompt']
+            // Add more settings buttons here as they are developed
         ];
-        $keyboard = ['inline_keyboard' => $buttons];
+
+        $grouped_settings_buttons = [];
+        for ($i = 0; $i < count($settings_buttons_flat); $i += 2) {
+            $row = [$settings_buttons_flat[$i]];
+            if (isset($settings_buttons_flat[$i+1])) {
+                $row[] = $settings_buttons_flat[$i+1];
+            }
+            $grouped_settings_buttons[] = $row;
+        }
+        // Always add the back button as a full-width button at the end
+        $grouped_settings_buttons[] = [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']];
+
+        $keyboard = ['inline_keyboard' => $grouped_settings_buttons];
 
         if ($messageId) {
             $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard);
@@ -578,14 +693,24 @@ class UserController {
         $text = "⏰ در چه ساعتی از روز مایل به دریافت اعلان‌های روزانه هستید؟\n(زمان‌ها بر اساس وقت تهران هستند)";
 
         $timeOptions = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
-        $timeButtons = [];
+        $time_buttons_flat = [];
         foreach ($timeOptions as $time) {
-            $timeButtons[] = ['text' => $time, 'callback_data' => 'settings_set_notify_time:' . $time];
+            $time_buttons_flat[] = ['text' => $time, 'callback_data' => 'settings_set_notify_time:' . $time];
         }
 
-        $keyboard = ['inline_keyboard' => array_chunk($timeButtons, 3)];
-        $keyboard['inline_keyboard'][] = [['text' => "🔙 بازگشت به تنظیمات", 'callback_data' => 'settings_show']];
+        $grouped_time_buttons = [];
+        // Aim for 2 or 3 buttons per row for time options for better touch targets
+        $buttons_per_row = 3;
+        for ($i = 0; $i < count($time_buttons_flat); $i += $buttons_per_row) {
+            $row = [];
+            for ($j = 0; $j < $buttons_per_row && ($i + $j) < count($time_buttons_flat); $j++) {
+                $row[] = $time_buttons_flat[$i + $j];
+            }
+            $grouped_time_buttons[] = $row;
+        }
+        $grouped_time_buttons[] = [['text' => "🔙 بازگشت به تنظیمات", 'callback_data' => 'settings_show']];
 
+        $keyboard = ['inline_keyboard' => $grouped_time_buttons];
         $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard);
     }
 
@@ -837,46 +962,54 @@ class UserController {
     private function checkSubscriptionAccess(string $hashedTelegramId): bool {
         $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
         if (!$user) {
+            error_log("checkSubscriptionAccess: User not found with hash {$hashedTelegramId}");
             return false;
         }
 
-        // Check for active subscription
+        // 1. Check for an active paid subscription first
         if (isset($user['subscription_status']) && $user['subscription_status'] === 'active') {
             if (!empty($user['subscription_ends_at'])) {
                 try {
                     $expiryDate = new \DateTime($user['subscription_ends_at']);
                     if ($expiryDate > new \DateTime()) {
-                        return true; // Active and not expired
-                    } else {
-                        // Subscription expired, can be updated by cron, for now, access is denied
-                        return false;
+                        return true; // Active paid subscription
                     }
+                    // If expired, it's no longer 'active' in terms of access. Cron should update status.
+                    // For this check, if it's 'active' but past date, treat as expired access.
+                    error_log("checkSubscriptionAccess: User {$user['id']} has 'active' status but subscription_ends_at ({$user['subscription_ends_at']}) is past.");
+                    return false;
                 } catch (\Exception $e) {
-                    error_log("Error checking subscription date for user {$hashedTelegramId}: " . $e->getMessage());
-                    return false; // Error in date parsing, treat as no access
+                    error_log("Error checking active subscription date for user {$user['id']}: " . $e->getMessage());
+                    return false;
                 }
             } else {
-                 // Active status without an end date could be a special case (e.g. lifetime)
-                 // Depending on business logic, this might be true. For now, let's assume active means access.
+                 // 'active' status without an end date might be a special case (e.g., lifetime).
+                 // Assuming 'active' always means access if no specific end date or end date is in future.
                  return true;
             }
         }
 
-        // Check for free trial period
-        if (isset($user['free_trial_ends_at'])) {
-            try {
-                $trialEndDate = new \DateTime($user['free_trial_ends_at']);
-                if ($trialEndDate > new \DateTime()) {
-                    return true; // Still in free trial
+        // 2. If not an active paid subscription, check for an ongoing free trial
+        if (isset($user['subscription_status']) && $user['subscription_status'] === 'free_trial') {
+            if (isset($user['trial_ends_at'])) {
+                try {
+                    $trialEndDate = new \DateTime($user['trial_ends_at']);
+                    if ($trialEndDate > new \DateTime()) {
+                        return true; // Still in free trial period
+                    }
+                    error_log("checkSubscriptionAccess: User {$user['id']} has 'free_trial' status but trial_ends_at ({$user['trial_ends_at']}) is past.");
+                } catch (\Exception $e) {
+                    error_log("Error checking free trial date for user {$user['id']}: " . $e->getMessage());
+                    return false;
                 }
-            } catch (\Exception $e) {
-                error_log("Error checking free trial date for user {$hashedTelegramId}: " . $e->getMessage());
-                // Error in date parsing, treat as no access for safety
-                return false;
+            } else {
+                // Status is 'free_trial' but no trial_ends_at date. This is inconsistent.
+                error_log("checkSubscriptionAccess: User {$user['id']} has 'free_trial' status but no trial_ends_at date.");
             }
         }
 
-        // Default to no access if none of the above conditions met
+        // If neither active subscription nor valid free trial, then no access.
+        error_log("checkSubscriptionAccess: User {$user['id']} has no active subscription or valid trial. Status: {$user['subscription_status']}");
         return false;
     }
 
