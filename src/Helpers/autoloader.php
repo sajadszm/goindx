@@ -18,13 +18,14 @@ spl_autoload_register(function ($className) {
             require_once $projectSpecificFile;
         } else {
             // For classes like `Database` which is outside `src` but used by `src` classes.
-            $baseProjectPath = dirname(dirname(__FILE__)); // Project root
+            $srcPath = dirname(dirname(__FILE__)); // This is PROJECT_ROOT/src
+            $projectRootPath = dirname($srcPath); // This is PROJECT_ROOT
 
             if ($className === 'Database') {
-                $configFile = $baseProjectPath . '/config/database.php'; // Specific fix for Database class
+                $configFile = $projectRootPath . '/config/database.php'; // Correct path to PROJECT_ROOT/config/database.php
             } else {
-                // General config path (if other classes were in config and matched case)
-                $configFile = $baseProjectPath . '/config/' . str_replace('\\', '/', $className) . '.php';
+                // General config path for other non-namespaced classes if any
+                $configFile = $projectRootPath . '/config/' . str_replace('\\', '/', $className) . '.php';
             }
 
             if (file_exists($configFile)) {
@@ -32,11 +33,14 @@ spl_autoload_register(function ($className) {
             } else {
                  // Log the paths it tried for the Database class specifically if it failed for Database
                 if ($className === 'Database') {
-                    $triedPath1 = $baseProjectPath . '/config/database.php'; // lowercase
-                    $triedPath2 = $baseProjectPath . '/config/Database.php'; // original case
-                    error_log("Autoloader: Could not load class Database. File not found: $file nor $projectSpecificFile nor $triedPath1 nor $triedPath2");
+                    // $file is for namespaced classes: PROJECT_ROOT/src/Database.php
+                    // $projectSpecificFile is for non-namespaced classes in PROJECT_ROOT: PROJECT_ROOT/Database.php
+                    // $configFile is the one we just constructed: PROJECT_ROOT/config/database.php
+                    $correctPathForDatabase = $projectRootPath . '/config/database.php';
+                    $altPathForDatabase = $projectRootPath . '/config/Database.php'; // if case was different
+                    error_log("Autoloader: Could not load class Database. Tried: $file, $projectSpecificFile, $correctPathForDatabase, $altPathForDatabase");
                 } else {
-                    error_log("Autoloader: Could not load class $className. File not found: $file nor $projectSpecificFile nor " . ($baseProjectPath . '/config/' . str_replace('\\', '/', $className) . '.php'));
+                    error_log("Autoloader: Could not load class $className. File not found: $file nor $projectSpecificFile nor " . ($projectRootPath . '/config/' . str_replace('\\', '/', $className) . '.php'));
                 }
             }
         }
