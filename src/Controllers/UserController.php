@@ -236,7 +236,7 @@ class UserController {
         $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
         if ($user && !empty($user['referred_by_user_id'])) {
             $responseText = "شما قبلا از طریق یک کد معرف ثبت نام کرده‌اید و نمی‌توانید مجددا کد وارد کنید.";
-            $backButtonKeyboard = json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'user_show_referral_info']]]]);
+            $backButtonKeyboard = ['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'user_show_referral_info']]]];
             if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $responseText, $backButtonKeyboard);
             else $this->telegramAPI->sendMessage($chatId, $responseText, $backButtonKeyboard);
             return;
@@ -245,8 +245,8 @@ class UserController {
         $text = "لطفا کد معرف دوست خود را وارد کنید (یا /cancel برای لغو):";
         $this->userModel->updateUser($hashedTelegramId, ['user_state' => 'awaiting_referral_code']);
 
-        if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, json_encode(['inline_keyboard' => []]));
-        else $this->telegramAPI->sendMessage($chatId, $text, json_encode(['inline_keyboard' => []]));
+        if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
+        else $this->telegramAPI->sendMessage($chatId, $text, null);
     }
 
     public function handleProcessReferralCode(string $telegramId, int $chatId, string $code, string $firstName, ?string $username) {
@@ -359,7 +359,8 @@ class UserController {
         $topic = $educationalContentModel->getContentById($topicId);
 
         if (!$topic || !$topic['is_tutorial_topic']) {
-            $this->telegramAPI->editMessageText($chatId, $messageId, "موضوع آموزشی انتخاب شده یافت نشد یا معتبر نیست.", json_encode(['inline_keyboard' => [[['text' => "بازگشت به لیست آموزش‌ها", 'callback_data' => 'user_show_tutorial_topics']]]]));
+            $keyboard = ['inline_keyboard' => [[['text' => "بازگشت به لیست آموزش‌ها", 'callback_data' => 'user_show_tutorial_topics']]]];
+            $this->telegramAPI->editMessageText($chatId, $messageId, "موضوع آموزشی انتخاب شده یافت نشد یا معتبر نیست.", $keyboard);
             return;
         }
 
@@ -519,11 +520,16 @@ class UserController {
 
         $text = "💬 شما در حال ارسال پیام به پشتیبانی هستید.\nلطفا پیام خود را بنویسید و ارسال کنید. پیام شما مستقیما برای ادمین ارسال خواهد شد.\n\nبرای لغو، /cancel را ارسال کنید یا از منوی اصلی گزینه دیگری انتخاب نمایید.";
 
-        $emptyKeyboard = json_encode(['inline_keyboard' => []]);
+        // To remove keyboard, pass null as replyMarkup for editMessageText
+        // or an empty array like ['inline_keyboard' => []] for sendMessage if you want to ensure no keyboard.
+        // For editMessageText, null is preferred to remove.
         if ($messageId) {
-            $this->telegramAPI->editMessageText($chatId, $messageId, $text, $emptyKeyboard);
+            $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
         } else {
-            $this->telegramAPI->sendMessage($chatId, $text, $emptyKeyboard);
+            // For sendMessage, if you want to be explicit about no keyboard:
+            // $this->telegramAPI->sendMessage($chatId, $text, ['inline_keyboard' => []]);
+            // Or simply omit it if the API class handles null correctly for new messages (usually does)
+            $this->telegramAPI->sendMessage($chatId, $text, null);
         }
     }
 
@@ -624,8 +630,9 @@ class UserController {
         }
         if (!empty($user['partner_telegram_id_hash'])) {
             $message = "شما در حال حاضر یک همراه متصل دارید. برای دعوت از فرد جدید، ابتدا باید اتصال فعلی را قطع کنید.";
-            if ($messageIdToEdit) $this->telegramAPI->editMessageText($chatId, $messageIdToEdit, $message, json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'main_menu_show']]]]));
-            else $this->telegramAPI->sendMessage($chatId, $message, json_encode(['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'main_menu_show']]]]));
+            $keyboard = ['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'main_menu_show']]]];
+            if ($messageIdToEdit) $this->telegramAPI->editMessageText($chatId, $messageIdToEdit, $message, $keyboard);
+            else $this->telegramAPI->sendMessage($chatId, $message, $keyboard);
             return;
         }
 
@@ -653,22 +660,22 @@ class UserController {
             $updated = $this->userModel->updateUser($hashedTelegramId, ['invitation_token' => null]);
             if ($updated) {
                 $text = "دعوتنامه شما با موفقیت لغو شد.";
-                if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, json_encode(['inline_keyboard'=>[]])); // Remove buttons
-                else $this->telegramAPI->sendMessage($chatId, $text);
+                if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, null); // Remove buttons
+                else $this->telegramAPI->sendMessage($chatId, $text, null);
             } else {
                 $text = "مشکلی در لغو دعوتنامه رخ داد.";
-                 if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text);
-                else $this->telegramAPI->sendMessage($chatId, $text);
+                 if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
+                else $this->telegramAPI->sendMessage($chatId, $text, null);
             }
         } else {
             $text = "دعوتنامه‌ای برای لغو وجود نداشت.";
-            if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text);
-            else $this->telegramAPI->sendMessage($chatId, $text);
+            if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, null);
+            else $this->telegramAPI->sendMessage($chatId, $text, null);
         }
         $this->showMainMenu($chatId);
     }
 
-    public function handleAcceptInvitationPrompt($telegramId, $chatId) {
+    public function handleAcceptInvitationPrompt($telegramId, int $chatId) { // Added type hint for $chatId
         $this->telegramAPI->sendMessage($chatId, "لطفا کد دعوتی که از همراه خود دریافت کرده‌اید را ارسال کنید, یا از طریق لینکی که همراهتان فرستاده اقدام کنید.");
     }
 
@@ -827,8 +834,66 @@ class UserController {
     // --------- SUBSCRIPTION METHODS END -----------
 
     // --------- ACCESS CONTROL START -----------
-    private function checkSubscriptionAccess(string $hashedTelegramId): bool { /* ... */ }
-    private function promptToSubscribe(int $chatId, ?int $messageIdToEdit = null, string $featureName = "این قابلیت") { /* ... */ }
+    private function checkSubscriptionAccess(string $hashedTelegramId): bool {
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        if (!$user) {
+            return false;
+        }
+
+        // Check for active subscription
+        if (isset($user['subscription_status']) && $user['subscription_status'] === 'active') {
+            if (!empty($user['subscription_ends_at'])) {
+                try {
+                    $expiryDate = new \DateTime($user['subscription_ends_at']);
+                    if ($expiryDate > new \DateTime()) {
+                        return true; // Active and not expired
+                    } else {
+                        // Subscription expired, can be updated by cron, for now, access is denied
+                        return false;
+                    }
+                } catch (\Exception $e) {
+                    error_log("Error checking subscription date for user {$hashedTelegramId}: " . $e->getMessage());
+                    return false; // Error in date parsing, treat as no access
+                }
+            } else {
+                 // Active status without an end date could be a special case (e.g. lifetime)
+                 // Depending on business logic, this might be true. For now, let's assume active means access.
+                 return true;
+            }
+        }
+
+        // Check for free trial period
+        if (isset($user['free_trial_ends_at'])) {
+            try {
+                $trialEndDate = new \DateTime($user['free_trial_ends_at']);
+                if ($trialEndDate > new \DateTime()) {
+                    return true; // Still in free trial
+                }
+            } catch (\Exception $e) {
+                error_log("Error checking free trial date for user {$hashedTelegramId}: " . $e->getMessage());
+                // Error in date parsing, treat as no access for safety
+                return false;
+            }
+        }
+
+        // Default to no access if none of the above conditions met
+        return false;
+    }
+
+    private function promptToSubscribe(int $chatId, ?int $messageIdToEdit = null, string $featureName = "این قابلیت") {
+        $text = "⚠️ برای دسترسی به «{$featureName}» نیاز به اشتراک فعال دارید.\n\n";
+        $text .= "می‌خواهید طرح‌های اشتراک را مشاهده کنید؟";
+        $keyboard = ['inline_keyboard' => [
+            [['text' => "💳 مشاهده طرح‌های اشتراک", 'callback_data' => 'sub_show_plans']],
+            [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']]
+        ]];
+
+        if ($messageIdToEdit) {
+            $this->telegramAPI->editMessageText($chatId, $messageIdToEdit, $text, $keyboard);
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard);
+        }
+    }
     // --------- ACCESS CONTROL END -----------
 
     // --- DELETE ACCOUNT ---
@@ -882,9 +947,9 @@ class UserController {
         if ($deleted) {
             $finalMessage = "حساب کاربری شما با موفقیت حذف شد.\nامیدواریم در آینده دوباره شما را ببینیم. برای استفاده مجدد از ربات، دستور /start را ارسال کنید.";
             if ($messageId) {
-                 $this->telegramAPI->editMessageText($chatId, $messageId, $finalMessage, json_encode(['inline_keyboard' => []])); // Remove buttons
+                 $this->telegramAPI->editMessageText($chatId, $messageId, $finalMessage, null); // Remove buttons
             } else {
-                 $this->telegramAPI->sendMessage($chatId, $finalMessage, json_encode(['inline_keyboard' => []]));
+                 $this->telegramAPI->sendMessage($chatId, $finalMessage, null);
             }
 
 
@@ -893,10 +958,11 @@ class UserController {
             }
         } else {
             $errorMessage = "متاسفانه در حذف حساب شما مشکلی پیش آمد. لطفا با پشتیبانی تماس بگیرید.";
+            $keyboard = ['inline_keyboard' => [[['text' => "بازگشت به تنظیمات", 'callback_data' => 'settings_show']]]];
             if ($messageId) {
-                $this->telegramAPI->editMessageText($chatId, $messageId, $errorMessage, json_encode(['inline_keyboard' => [[['text' => "بازگشت به تنظیمات", 'callback_data' => 'settings_show']]]]));
+                $this->telegramAPI->editMessageText($chatId, $messageId, $errorMessage, $keyboard);
             } else {
-                $this->telegramAPI->sendMessage($chatId, $errorMessage, json_encode(['inline_keyboard' => [[['text' => "بازگشت به تنظیمات", 'callback_data' => 'settings_show']]]]));
+                $this->telegramAPI->sendMessage($chatId, $errorMessage, $keyboard);
             }
         }
     }
