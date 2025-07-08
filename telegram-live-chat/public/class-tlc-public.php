@@ -86,8 +86,9 @@ class TLC_Public {
             'tlc_public_ajax',
             array(
                 'ajax_url' => admin_url( 'admin-ajax.php' ),
-                'nonce'    => wp_create_nonce( 'tlc_send_visitor_message_nonce' )
-                // Note: The nonce name here should match the one checked in the AJAX handler
+                'send_message_nonce'    => wp_create_nonce( 'tlc_send_visitor_message_nonce' ),
+                'fetch_messages_nonce'  => wp_create_nonce( 'tlc_fetch_new_messages_nonce' ),
+                'polling_interval'      => apply_filters( TLC_PLUGIN_PREFIX . 'widget_polling_interval', 5000 ) // Default 5 seconds, filterable
             )
         );
     }

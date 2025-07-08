@@ -182,7 +182,336 @@ class TLC_Plugin {
         // AJAX handler for visitor messages
         $this->loader->add_action( 'wp_ajax_tlc_send_visitor_message', $this, 'handle_visitor_message' );
         $this->loader->add_action( 'wp_ajax_nopriv_tlc_send_visitor_message', $this, 'handle_visitor_message' );
+
+        // Cron related hooks
+        $this->loader->add_filter( 'cron_schedules', $this, 'add_custom_cron_schedules' );
+        $this->loader->add_action( TLC_PLUGIN_PREFIX . 'telegram_polling_cron', $this, 'run_telegram_polling' );
+
+        // Hook to schedule/unschedule cron when settings are updated
+        // This specific hook `update_option_{option_name}` is dynamic.
+        // We also need to handle plugin activation/deactivation.
+        add_action( 'update_option_' . TLC_PLUGIN_PREFIX . 'enable_telegram_polling', array( $this, 'handle_polling_setting_change' ), 10, 2 );
+        add_action( 'update_option_' . TLC_PLUGIN_PREFIX . 'polling_interval', array( $this, 'handle_polling_setting_change' ), 10, 2 );
+
+        // AJAX handler for fetching new messages for the widget
+        $this->loader->add_action( 'wp_ajax_tlc_fetch_new_messages', $this, 'handle_fetch_new_messages' );
+        $this->loader->add_action( 'wp_ajax_nopriv_tlc_fetch_new_messages', $this, 'handle_fetch_new_messages' );
+        // Also handle on activation - this is already covered if we schedule on init if not scheduled
     }
+
+    /**
+     * Add custom cron schedules.
+     * @param array $schedules
+     * @return array
+     */
+    public function add_custom_cron_schedules( $schedules ) {
+        $tlc_admin = new TLC_Admin($this->plugin_name, $this->version); // To access get_polling_intervals
+        $custom_intervals = $tlc_admin->get_polling_intervals();
+
+        if(isset($custom_intervals['15_seconds'])) {
+            $schedules['tlc_15_seconds'] = array(
+                'interval' => 15,
+                'display'  => __( 'Every 15 Seconds (TLC)', 'telegram-live-chat' )
+            );
+        }
+        if(isset($custom_intervals['30_seconds'])) {
+             $schedules['tlc_30_seconds'] = array(
+                'interval' => 30,
+                'display'  => __( 'Every 30 Seconds (TLC)', 'telegram-live-chat' )
+            );
+        }
+        if(isset($custom_intervals['60_seconds'])) {
+            $schedules['tlc_60_seconds'] = array( // Equivalent to 'hourly' but for consistency
+                'interval' => 60,
+                'display'  => __( 'Every 1 Minute (TLC)', 'telegram-live-chat' )
+            );
+        }
+         if(isset($custom_intervals['300_seconds'])) {
+            $schedules['tlc_300_seconds'] = array(
+                'interval' => 300,
+                'display'  => __( 'Every 5 Minutes (TLC)', 'telegram-live-chat' )
+            );
+        }
+        // Note: WordPress's minimum cron interval is typically 1 minute unless filtered otherwise or server cron is used.
+        // True 15/30 second polling might require server-side cron triggering wp-cron.php frequently.
+        // For now, we define them, but actual execution frequency depends on how often WP Cron is triggered.
+        return $schedules;
+    }
+
+    /**
+     * Handle changes to polling settings to reschedule cron.
+     */
+    public function handle_polling_setting_change() {
+        $this->schedule_or_unschedule_polling_cron();
+    }
+
+    /**
+     * Schedule or unschedule the polling cron job based on settings.
+     * This should also be called on plugin activation and deactivation.
+     */
+    public function schedule_or_unschedule_polling_cron() {
+        $is_polling_enabled = get_option( TLC_PLUGIN_PREFIX . 'enable_telegram_polling' );
+        $cron_hook = TLC_PLUGIN_PREFIX . 'telegram_polling_cron';
+
+        if ( $is_polling_enabled ) {
+            if ( ! wp_next_scheduled( $cron_hook ) ) {
+                $interval_key = get_option( TLC_PLUGIN_PREFIX . 'polling_interval', '30_seconds' );
+                // Convert interval key to WP schedule key
+                $wp_schedule_key = TLC_PLUGIN_PREFIX . str_replace('_seconds', '_seconds', $interval_key);
+                // A bit redundant here, but if keys were '15s' vs 'tlc_15_seconds' it would map.
+                // For our current setup, 'tlc_15_seconds' is directly the key in schedules array.
+
+                // Ensure the schedule exists, especially if `add_custom_cron_schedules` hasn't fired yet on activation.
+                $schedules = wp_get_schedules();
+                if (!isset($schedules[$wp_schedule_key])) {
+                     // Fallback if our custom schedule isn't registered for some reason (e.g. during activation)
+                    $wp_schedule_key = 'hourly'; // A safe default
+                     error_log(TLC_PLUGIN_PREFIX . "Warning: Custom cron schedule '{$wp_schedule_key}' not found. Falling back to 'hourly'.");
+                }
+
+                wp_schedule_event( time(), $wp_schedule_key, $cron_hook );
+                error_log(TLC_PLUGIN_PREFIX . "Scheduled polling cron with interval key: " . $wp_schedule_key);
+            }
+        } else {
+            if ( wp_next_scheduled( $cron_hook ) ) {
+                wp_clear_scheduled_hook( $cron_hook );
+                error_log(TLC_PLUGIN_PREFIX . "Unscheduled polling cron.");
+            }
+        }
+    }
+
+
+    /**
+     * The actual cron job function to poll Telegram.
+     */
+    public function run_telegram_polling() {
+        $is_polling_enabled = get_option( TLC_PLUGIN_PREFIX . 'enable_telegram_polling' );
+        if ( ! $is_polling_enabled ) {
+            // Ensure cron is unscheduled if it's running while disabled.
+            $this->schedule_or_unschedule_polling_cron();
+            return;
+        }
+
+        $bot_token = get_option( TLC_PLUGIN_PREFIX . 'bot_token' );
+        if ( empty( $bot_token ) ) {
+            error_log( TLC_PLUGIN_PREFIX . 'Telegram polling cron: Bot token not set.' );
+            return;
+        }
+
+        $telegram_api = new TLC_Telegram_Bot_API( $bot_token );
+        if ( ! $telegram_api->is_configured() ) {
+            error_log( TLC_PLUGIN_PREFIX . 'Telegram polling cron: API not configured (missing token).' );
+            return;
+        }
+
+        // Check if getMe works, as a basic health check before polling
+        $me = $telegram_api->get_me();
+        if (is_wp_error($me) || !$me['ok']) {
+            $error_message = is_wp_error($me) ? $me->get_error_message() : ($me['description'] ?? 'Unknown error');
+            error_log(TLC_PLUGIN_PREFIX . "Telegram polling cron: getMe failed. Halting polling. Error: " . $error_message);
+            // Optionally, disable polling here and notify admin
+            // update_option(TLC_PLUGIN_PREFIX . 'enable_telegram_polling', false);
+            // $this->schedule_or_unschedule_polling_cron();
+            return;
+        }
+
+
+        $last_update_id = (int) get_option( TLC_PLUGIN_PREFIX . 'last_telegram_update_id', 0 );
+        $offset = $last_update_id > 0 ? $last_update_id + 1 : null;
+
+        // Use a timeout for getUpdates. Telegram recommends up to 50 seconds for long polling.
+        // WP Cron's reliability for exact timing is variable, so short polling is often more practical here.
+        $updates = $telegram_api->get_updates( $offset, 100, 20 ); // Fetch up to 100 updates, 20s timeout for long poll
+
+        if ( is_wp_error( $updates ) ) {
+            error_log( TLC_PLUGIN_PREFIX . 'Telegram polling error: ' . $updates->get_error_message() );
+            return;
+        }
+
+        if ( ! empty( $updates['ok'] ) && ! empty( $updates['result'] ) ) {
+            $new_last_update_id = $last_update_id;
+            foreach ( $updates['result'] as $update ) {
+                if ( isset( $update['update_id'] ) ) {
+                    $current_update_id = (int) $update['update_id'];
+                    if ($current_update_id > $new_last_update_id) {
+                        $new_last_update_id = $current_update_id;
+                    }
+                    // Process the update (this is for Step 3 of Phase 2)
+                    // For now, just log it.
+                    // error_log(TLC_PLUGIN_PREFIX . 'Received update ID: ' . $update['update_id'] . ' - Content: ' . json_encode($update));
+                     $this->process_telegram_update($update); // Call processing function
+                }
+            }
+
+            if ( $new_last_update_id > $last_update_id ) {
+                update_option( TLC_PLUGIN_PREFIX . 'last_telegram_update_id', $new_last_update_id );
+                 error_log(TLC_PLUGIN_PREFIX . "Polling successful. Processed " . count($updates['result']) . " updates. New last_update_id: " . $new_last_update_id);
+            } else {
+                // error_log(TLC_PLUGIN_PREFIX . "Polling successful. No new updates.");
+            }
+        } else {
+             error_log(TLC_PLUGIN_PREFIX . 'Telegram polling: No updates or error in response structure. Response: ' . json_encode($updates));
+        }
+    }
+
+    /**
+     * Placeholder for processing a single Telegram update.
+     * This will be fully implemented in "Core Chat Logic (Telegram to Website - Part 2)".
+     * @param array $update The update object from Telegram.
+     */
+    public function process_telegram_update( $update ) {
+        global $wpdb;
+
+        // Check if this is a message, has text, and is a reply
+        if ( !isset( $update['message']['message_id'] ) ||
+             !isset( $update['message']['text'] ) ||
+             !isset( $update['message']['from']['id'] ) ||
+             !isset( $update['message']['reply_to_message'] ) ) {
+            // error_log(TLC_PLUGIN_PREFIX . "Update is not a valid reply message. Update ID: " . ($update['update_id'] ?? 'N/A'));
+            return;
+        }
+
+        // 1. Check if the reply is to a message sent by our bot.
+        // We need the bot's ID for this. We can get it from getMe and store it.
+        // For now, we assume any reply processed here is intended for the system if it matches format.
+        // A stricter check would be: $update['message']['reply_to_message']['from']['id'] == $this->get_bot_id()
+        // Let's add a quick check for `is_bot` if available on `reply_to_message.from`
+        if ( !isset($update['message']['reply_to_message']['from']['is_bot']) || !$update['message']['reply_to_message']['from']['is_bot']) {
+            // error_log(TLC_PLUGIN_PREFIX . "Reply is not to a bot. Ignoring. Update ID: " . $update['update_id']);
+            // This check might be too strict if bot details are not always present or if bot is replying to itself (unlikely here)
+            // A better check is to see if we can parse session_id from the replied-to message.
+        }
+
+        $replied_to_text = $update['message']['reply_to_message']['text'] ?? ($update['message']['reply_to_message']['caption'] ?? '');
+        if ( empty( $replied_to_text ) ) {
+            // error_log(TLC_PLUGIN_PREFIX . "Replied-to message has no text/caption. Update ID: " . $update['update_id']);
+            return;
+        }
+
+        // 2. Parse session_id from reply_to_message.text
+        // Format: "New chat message from visitor (Session: XX):"
+        preg_match( '/\(Session: (\d+)\)/', $replied_to_text, $matches );
+        if ( !isset( $matches[1] ) || !is_numeric( $matches[1] ) ) {
+            // error_log(TLC_PLUGIN_PREFIX . "Could not parse session_id from replied message. Text: " . $replied_to_text . " Update ID: " . $update['update_id']);
+            return;
+        }
+        $session_id = (int) $matches[1];
+
+        // 3. Get the agent's telegram_user_id
+        $agent_telegram_id = (int) $update['message']['from']['id'];
+        $agent_message_text = sanitize_textarea_field( $update['message']['text'] );
+        $telegram_message_id = (int) $update['message']['message_id'];
+
+        // 4. Validate this agent telegram_user_id against the configured list
+        $admin_user_ids_str = get_option( TLC_PLUGIN_PREFIX . 'admin_user_ids', '' );
+        $configured_agent_ids = array_map( 'trim', explode( ',', $admin_user_ids_str ) );
+        $numeric_agent_ids = array_filter( $configured_agent_ids, 'is_numeric' ); // Ensure all are numeric
+
+        if ( !in_array( (string)$agent_telegram_id, $numeric_agent_ids ) ) { // Cast to string for in_array comparison as options are strings
+            error_log(TLC_PLUGIN_PREFIX . "Message from non-configured agent ID: " . $agent_telegram_id . ". Update ID: " . $update['update_id']);
+            return;
+        }
+
+        // 5. Store the agent's message in tlc_chat_messages
+        $messages_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
+        $message_inserted = $wpdb->insert(
+            $messages_table,
+            array(
+                'session_id'        => $session_id,
+                'sender_type'       => 'agent',
+                'telegram_user_id'  => $agent_telegram_id,
+                'message_content'   => $agent_message_text,
+                'timestamp'         => current_time( 'mysql' ), // Could also use $update['message']['date'] converted to MySQL format
+                'telegram_message_id' => $telegram_message_id,
+                'is_read'           => 0, // Mark as unread for the visitor
+            )
+        );
+
+        if ( ! $message_inserted ) {
+            error_log(TLC_PLUGIN_PREFIX . "Failed to insert agent message into DB. Session: $session_id, Agent: $agent_telegram_id. Update ID: " . $update['update_id']);
+            return;
+        }
+        $db_message_id = $wpdb->insert_id;
+
+        // 6. Update last_active_time and status for the session in tlc_chat_sessions
+        $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
+        $wpdb->update(
+            $sessions_table,
+            array(
+                'last_active_time' => current_time( 'mysql' ),
+                'status' => 'active' // Ensure session is active if agent replies
+            ),
+            array( 'session_id' => $session_id )
+        );
+
+        error_log(TLC_PLUGIN_PREFIX . "Successfully processed and stored agent reply. DB Message ID: $db_message_id, Session: $session_id, Agent: $agent_telegram_id. Update ID: " . $update['update_id']);
+    }
+
+    /**
+     * Handles AJAX request from frontend widget to fetch new messages.
+     *
+     * @since 0.2.0
+     */
+    public function handle_fetch_new_messages() {
+        global $wpdb;
+
+        // Verify nonce
+        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( $_POST['nonce'] ), 'tlc_fetch_new_messages_nonce' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Nonce verification failed for fetch.', 'telegram-live-chat' ) ), 403 );
+            return;
+        }
+
+        $visitor_token = isset( $_POST['visitor_token'] ) ? sanitize_text_field( $_POST['visitor_token'] ) : '';
+        $last_message_id_displayed = isset( $_POST['last_message_id_displayed'] ) ? absint( $_POST['last_message_id_displayed'] ) : 0;
+
+        if ( empty( $visitor_token ) ) {
+            wp_send_json_error( array( 'message' => __( 'Visitor token is required.', 'telegram-live-chat' ) ), 400 );
+            return;
+        }
+
+        $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
+        $messages_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
+
+        // Get session_id from visitor_token
+        $session_id = $wpdb->get_var( $wpdb->prepare(
+            "SELECT session_id FROM $sessions_table WHERE visitor_token = %s",
+            $visitor_token
+        ) );
+
+        if ( ! $session_id ) {
+            // Don't send error if session not found yet, could be initial poll before first message sent by visitor
+            wp_send_json_success( array( 'messages' => array() ) );
+            return;
+        }
+
+        // Fetch new messages (agent or system messages) for this session
+        // that have an ID greater than the last one displayed by the client.
+        $new_messages = $wpdb->get_results( $wpdb->prepare(
+            "SELECT message_id, sender_type, message_content, timestamp
+             FROM $messages_table
+             WHERE session_id = %d
+             AND message_id > %d
+             AND (sender_type = 'agent' OR sender_type = 'system')
+             ORDER BY message_id ASC",
+            $session_id,
+            $last_message_id_displayed
+        ) );
+
+        $output_messages = array();
+        if ($new_messages) {
+            foreach($new_messages as $msg) {
+                $output_messages[] = array(
+                    'id' => $msg->message_id,
+                    'sender_type' => $msg->sender_type,
+                    'text' => $msg->message_content,
+                    'timestamp' => $msg->timestamp,
+                );
+            }
+        }
+
+        wp_send_json_success( array( 'messages' => $output_messages ) );
+    }
+
 
     /**
      * Run the loader to execute all of the hooks with WordPress.

@@ -31,12 +31,31 @@ define( 'TLC_PLUGIN_PREFIX', 'tlc_' ); // Telegram Live Chat
 function activate_telegram_live_chat() {
     require_once TLC_PLUGIN_DIR . 'includes/class-tlc-activator.php';
     TLC_Activator::activate();
+
+    // Schedule cron job if enabled by default or after settings are set
+    // It's better to call this after initial options are set by activator.
+    // TLC_Plugin instance is needed, or make schedule_or_unschedule_polling_cron static.
+    // For simplicity, let's ensure it's checked/run on next admin_init or similar if not here.
+    // The current implementation hooks into settings changes and will schedule if enabled.
+    // We can also explicitly call it.
+    if (class_exists('TLC_Plugin')) {
+        $plugin_instance = new TLC_Plugin();
+        $plugin_instance->schedule_or_unschedule_polling_cron();
+         error_log(TLC_PLUGIN_PREFIX . "Called schedule_or_unschedule_polling_cron on activation.");
+    }
 }
 
 /**
  * The code that runs during plugin deactivation.
  */
 function deactivate_telegram_live_chat() {
+    // Unschedule cron job
+    $cron_hook = TLC_PLUGIN_PREFIX . 'telegram_polling_cron';
+    if ( wp_next_scheduled( $cron_hook ) ) {
+        wp_clear_scheduled_hook( $cron_hook );
+        error_log(TLC_PLUGIN_PREFIX . "Unscheduled polling cron on deactivation.");
+    }
+
     require_once TLC_PLUGIN_DIR . 'includes/class-tlc-deactivator.php';
     TLC_Deactivator::deactivate();
 }

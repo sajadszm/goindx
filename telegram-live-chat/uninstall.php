@@ -33,6 +33,10 @@ if ( $remove_data ) {
     // For now, let's list options we anticipate from Phase 1 plan
     delete_option('tlc_bot_token');
     delete_option('tlc_admin_user_ids');
+    delete_option('tlc_telegram_chat_id_group');
+    delete_option('tlc_enable_telegram_polling');
+    delete_option('tlc_polling_interval');
+    delete_option('tlc_last_telegram_update_id');
     delete_option('tlc_enable_cleanup_on_uninstall'); // Also delete the option itself
 
     // Remove custom database tables

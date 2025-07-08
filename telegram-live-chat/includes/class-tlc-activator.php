@@ -80,6 +80,10 @@ class TLC_Activator {
         $default_options = array(
             TLC_PLUGIN_PREFIX . 'bot_token' => '',
             TLC_PLUGIN_PREFIX . 'admin_user_ids' => '',
+            TLC_PLUGIN_PREFIX . 'telegram_chat_id_group' => '',
+            TLC_PLUGIN_PREFIX . 'enable_telegram_polling' => false, // Default to disabled
+            TLC_PLUGIN_PREFIX . 'polling_interval' => '30_seconds', // Default interval
+            TLC_PLUGIN_PREFIX . 'last_telegram_update_id' => 0, // For tracking polled updates
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
             // Add more default options here as needed
         );
