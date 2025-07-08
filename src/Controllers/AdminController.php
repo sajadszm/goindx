@@ -422,6 +422,55 @@ class AdminController {
         return $phases[$phaseKey] ?? $phaseKey;
     }
 
+    // --- Zarinpal Transaction Listing (Admin) ---
+    public function listZarinpalTransactions(string $telegramId, int $chatId, ?int $messageId, int $page = 0) {
+        if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+
+        $zarinpalService = new \Services\ZarinpalService();
+        $perPage = 10;
+        $offset = $page * $perPage;
+
+        $transactions = $zarinpalService->getAllTransactionsAdmin($perPage, $offset);
+        $totalTransactions = $zarinpalService->countAllTransactionsAdmin();
+        $totalPages = ceil($totalTransactions / $perPage);
+
+        $text = "📜 **لیست تراکنش‌های زرین‌پال** (صفحه " . ($page + 1) . " از {$totalPages})\n\n";
+        $buttons = [];
+
+        if (empty($transactions)) {
+            $text .= "هیچ تراکنشی یافت نشد.";
+        } else {
+            foreach ($transactions as $tx) {
+                $statusFa = match ($tx['status']) {
+                    'pending' => 'در انتظار پرداخت',
+                    'completed' => 'موفق ✅',
+                    'failed' => 'ناموفق ❌',
+                    default => $tx['status'],
+                };
+                $userName = $tx['user_first_name'] ?? "کاربر {$tx['user_id']}";
+                $text .= " شناسه: `{$tx['id']}` | کاربر: {$userName}\n";
+                $text .= " مبلغ: " . number_format($tx['amount']) . " تومان | وضعیت: {$statusFa}\n";
+                $text .= " طرح: " . ($tx['plan_id'] ? "ID {$tx['plan_id']}" : "نامشخص") . "\n";
+                if ($tx['zarinpal_authority']) $text .= " کد زرین‌پال: `{$tx['zarinpal_authority']}`\n";
+                if ($tx['zarinpal_ref_id']) $text .= " کد پیگیری: `{$tx['zarinpal_ref_id']}`\n";
+                $text .= " تاریخ: " . (new \DateTime($tx['created_at']))->format('Y-m-d H:i') . "\n";
+                $text .= " توضیحات: " . ($tx['description'] ?? '-') . "\n";
+                $text .= "--------------------\n";
+            }
+        }
+
+        $paginationButtons = [];
+        if ($page > 0) $paginationButtons[] = ['text' => '⬅️ قبلی', 'callback_data' => "admin_list_transactions:" . ($page - 1)];
+        if (($page + 1) < $totalPages) $paginationButtons[] = ['text' => '➡️ بعدی', 'callback_data' => "admin_list_transactions:" . ($page + 1)];
+        if (!empty($paginationButtons)) $buttons[] = $paginationButtons;
+
+        $buttons[] = [['text' => "🔙 بازگشت به پنل ادمین", 'callback_data' => 'admin_show_menu']];
+        $keyboard = ['inline_keyboard' => $buttons];
+
+        if ($messageId) $this->telegramAPI->editMessageText($chatId, $messageId, $text, $keyboard, 'Markdown');
+        else $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+    }
+
     // --- Broadcast Message ---
     public function promptBroadcastMessage(string $adminTelegramId, int $adminChatId, ?int $messageId = null) {
         if (!$this->isAdmin($adminTelegramId)) { return; }
