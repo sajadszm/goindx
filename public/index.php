@@ -1,11 +1,11 @@
 <?php
 
-require_once dirname(__DIR__) . '/config/config.php'; // Defines BASE_PATH and loads autoloader
+require_once dirname(__DIR__) . '/config/config.php';
 
 use Controllers\UserController;
 use Controllers\AdminController;
 use Telegram\TelegramAPI;
-use Helpers\InputHelper;
+use Helpers\EncryptionHelper;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -38,7 +38,7 @@ try {
         $message = $update['message'];
         $chatId = $message['chat']['id'];
         $text = $message['text'] ?? '';
-        $userId = (string)$message['from']['id']; // Ensure userId is string for comparisons
+        $userId = (string)$message['from']['id'];
         $firstName = $message['from']['first_name'] ?? '';
         $username = $message['from']['username'] ?? null;
 
@@ -52,45 +52,51 @@ try {
                 $userController->handleStart($userId, $chatId, $firstName, $username);
             }
         } elseif (!empty($text)) {
-            $hashedTelegramId = \Helpers\EncryptionHelper::hashIdentifier($userId);
+            $hashedTelegramId = EncryptionHelper::hashIdentifier($userId);
             $currentUser = $userController->getUserModel()->findUserByTelegramId($hashedTelegramId);
 
-            if ($currentUser && isset($currentUser['user_state'])) {
-                $userState = $currentUser['user_state'];
+            if ($currentUser && !empty($currentUser['user_state'])) {
+                $userStateJson = $currentUser['user_state'];
+                $stateInfo = json_decode($userStateJson, true);
+                $stateAction = (is_array($stateInfo) && isset($stateInfo['action'])) ? $stateInfo['action'] : $userStateJson;
 
-                if ($text === '/cancel_admin_action' && strpos($userState, 'admin_') === 0 && $userId === ADMIN_TELEGRAM_ID) {
+                if ($text === '/cancel') {
+                    $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
+                    $telegramAPI->sendMessage($chatId, "عملیات لغو شد.");
+                    if ($stateAction === 'awaiting_support_message') { // If cancelling support, show main menu
+                         $userController->showMainMenu($chatId);
+                    } elseif (strpos($stateAction, 'admin_') === 0 && $userId === ADMIN_TELEGRAM_ID) { // If admin cancelling admin action
+                         $adminController->showAdminMenu($userId, $chatId, null);
+                    } else { // Default for other user states that might use /cancel
+                        $userController->showMainMenu($chatId);
+                    }
+                } elseif ($text === '/cancel_admin_action' && strpos($stateAction, 'admin_') === 0 && $userId === ADMIN_TELEGRAM_ID) {
                      $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
                      $telegramAPI->sendMessage($chatId, "عملیات ادمین لغو شد.");
                      $adminController->showAdminMenu($userId, $chatId, null);
-                } elseif ($userState === 'awaiting_support_message') {
-                    if ($text === '/cancel') {
-                        $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
-                        $telegramAPI->sendMessage($chatId, "ارسال پیام به پشتیبانی لغو شد.");
-                        $userController->showMainMenu($chatId);
-                    } else {
-                        $userController->handleForwardSupportMessage($userId, $chatId, $text, $firstName, $username);
-                    }
-                } elseif ($userState === 'admin_awaiting_plan_add' && $userId === ADMIN_TELEGRAM_ID) {
+                } elseif ($stateAction === 'awaiting_support_message') {
+                    $userController->handleForwardSupportMessage($userId, $chatId, $text, $firstName, $username);
+                } elseif ($stateAction === 'admin_awaiting_plan_add' && $userId === ADMIN_TELEGRAM_ID) {
                     $adminController->handleAddSubscriptionPlanDetails($userId, $chatId, $text);
-                }
-                // Add other states like admin_awaiting_plan_edit_details:PLAN_ID here later
-                else {
-                    // Fallback for unhandled states or if non-admin is in an admin state somehow
-                    $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]); // Clear potentially stuck state
+                } elseif (($stateAction === 'admin_add_content' || $stateAction === 'admin_edit_content') && $userId === ADMIN_TELEGRAM_ID && is_array($stateInfo)) {
+                    $adminController->handleAdminConversation($userId, $chatId, $text, $stateInfo);
+                } elseif ($stateAction === 'awaiting_referral_code') {
+                    $userController->handleProcessReferralCode($userId, $chatId, $text, $firstName, $username);
+                } else {
+                    error_log("User {$userId} in unhandled state: {$userStateJson}. Clearing state.");
+                    $userController->getUserModel()->updateUser($hashedTelegramId, ['user_state' => null]);
                     $userController->handleStart($userId, $chatId, $firstName, $username);
                 }
             } elseif ($text === '/start') {
                 $userController->handleStart($userId, $chatId, $firstName, $username);
             } else {
-                // Any other text, treat as start/show main menu
                 $userController->handleStart($userId, $chatId, $firstName, $username);
             }
         }
-        // If $text is empty (media message without caption), it's ignored by this logic.
 
     } elseif (isset($update['callback_query'])) {
         $callbackQuery = $update['callback_query'];
-        $userId = (string)$callbackQuery['from']['id']; // Ensure userId is string
+        $userId = (string)$callbackQuery['from']['id'];
         $chatId = $callbackQuery['message']['chat']['id'];
         $callbackData = $callbackQuery['data'];
         $callbackQueryId = $callbackQuery['id'];
@@ -98,20 +104,20 @@ try {
 
         $telegramAPI->answerCallbackQuery($callbackQueryId);
 
-        $parts = explode(':', $callbackData);
+        $parts = explode(':', $callbackData, 2);
         $action = $parts[0];
         $value = $parts[1] ?? null;
-        $param2 = $parts[2] ?? null;
-        $param3 = $parts[3] ?? null;
 
         if (strpos($action, 'admin_') === 0) {
             if ($userId !== ADMIN_TELEGRAM_ID) {
                 $telegramAPI->sendMessage($chatId, "شما اجازه دسترسی به این دستور ادمین را ندارید.");
             } else {
+                // Admin actions
                 switch ($action) {
                     case 'admin_show_menu':
                         $adminController->showAdminMenu($userId, $chatId, $messageId);
                         break;
+                    // ... other admin cases ...
                     case 'admin_plans_show_list':
                         $adminController->showSubscriptionPlansAdmin($userId, $chatId, $messageId);
                         break;
@@ -119,7 +125,34 @@ try {
                         $adminController->promptAddSubscriptionPlan($userId, $chatId, $messageId);
                         break;
                     case 'admin_plan_toggle_active':
-                        $adminController->handleTogglePlanActive($userId, $chatId, $messageId, (int)$value, (int)$param2);
+                        list($planIdVal, $newStateVal) = explode('_', $value);
+                        $adminController->handleTogglePlanActive($userId, $chatId, $messageId, (int)$planIdVal, (int)$newStateVal);
+                        break;
+                    case 'admin_content_show_menu':
+                        $adminController->showContentAdminMenu($userId, $chatId, $messageId);
+                        break;
+                    case 'admin_content_list_topics':
+                        $adminController->listTutorialTopicsAdmin($userId, $chatId, $messageId);
+                        break;
+                    case 'admin_content_list_articles':
+                        $adminController->listArticlesInTopicAdmin($userId, $chatId, $messageId, (int)$value);
+                        break;
+                    case 'admin_content_prompt_add':
+                        list($contentTypeVal, $parentIdVal) = explode('_', $value);
+                        $adminController->promptAddContent($userId, $chatId, $messageId, $contentTypeVal, (int)$parentIdVal);
+                        break;
+                    case 'admin_content_prompt_edit':
+                        $adminController->promptEditEducationalContent($userId, $chatId, $messageId, (int)$value);
+                        break;
+                    case 'admin_content_setparam':
+                        list($fieldName, $fieldVal) = explode('_', $value, 2);
+                        $adminController->handleAdminContentSetParam($userId, $chatId, $messageId, $fieldName, $fieldVal);
+                        break;
+                    case 'admin_content_confirm_delete':
+                        $adminController->confirmDeleteEducationalContent($userId, $chatId, $messageId, (int)$value);
+                        break;
+                    case 'admin_content_do_delete':
+                        $adminController->handleDeleteEducationalContent($userId, $chatId, $messageId, (int)$value);
                         break;
                     default:
                         error_log("Unknown admin callback action: " . $action . " Full data: " . $callbackData);
@@ -129,15 +162,22 @@ try {
             }
         } else {
             // User actions
+            $userParts = explode(':', $callbackData);
+            $action = $userParts[0];
+            $val1 = $userParts[1] ?? null;
+            $val2 = $userParts[2] ?? null;
+            $val3 = $userParts[3] ?? null;
+
             switch ($action) {
                 case 'select_role':
-                    $userController->handleRoleSelection($userId, $chatId, $value, $messageId);
+                    $userController->handleRoleSelection($userId, $chatId, $val1, $messageId);
                     break;
+                // ... other user cases ...
                 case 'partner_invite':
-                    $userController->handleGenerateInvitation((string)$userId, $chatId, $messageId);
+                    $userController->handleGenerateInvitation($userId, $chatId, $messageId);
                     break;
                 case 'partner_cancel_invite':
-                    $userController->handleCancelInvitation((string)$userId, $chatId, $messageId);
+                    $userController->handleCancelInvitation($userId, $chatId, $messageId);
                     break;
                 case 'partner_accept_prompt':
                     $userController->handleAcceptInvitationPrompt($userId, $chatId);
@@ -149,6 +189,7 @@ try {
                     $userController->handleDisconnectPartnerConfirm($userId, $chatId, $messageId);
                     break;
                 case 'main_menu_show':
+                case 'main_menu_show_direct': // Handles direct to main menu after skipping referral
                     $userController->showMainMenu($chatId);
                     break;
                 case 'cycle_log_period_start_prompt':
@@ -158,24 +199,22 @@ try {
                     $userController->handleCyclePickYear($userId, $chatId, $messageId);
                     break;
                 case 'cycle_select_year':
-                    $userController->handleCycleSelectYear($userId, $chatId, $messageId, $value);
+                    $userController->handleCycleSelectYear($userId, $chatId, $messageId, $val1);
                     break;
                 case 'cycle_select_month':
-                    list($year, $month) = explode(':', $value);
-                    $userController->handleCycleSelectMonth($userId, $chatId, $messageId, $year, $month);
+                    $userController->handleCycleSelectMonth($userId, $chatId, $messageId, $val1, $val2);
                     break;
                 case 'cycle_select_day':
-                    list($year, $month, $day) = explode(':', $value);
-                    $userController->handleCycleLogDate($userId, $chatId, $messageId, $year, $month, $day);
+                    $userController->handleCycleLogDate($userId, $chatId, $messageId, $val1, $val2, $val3);
                     break;
                 case 'cycle_log_date':
-                    $userController->handleCycleLogDate($userId, $chatId, $messageId, $value);
+                    $userController->handleCycleLogDate($userId, $chatId, $messageId, $val1);
                     break;
                 case 'cycle_set_avg_period':
-                    $userController->handleSetAveragePeriodLength($userId, $chatId, $messageId, $value);
+                    $userController->handleSetAveragePeriodLength($userId, $chatId, $messageId, $val1);
                     break;
                 case 'cycle_set_avg_cycle':
-                    $userController->handleSetAverageCycleLength($userId, $chatId, $messageId, $value);
+                    $userController->handleSetAverageCycleLength($userId, $chatId, $messageId, $val1);
                     break;
                 case 'cycle_skip_avg_period':
                      $userController->handleSkipAverageInfo($userId, $chatId, $messageId, 'period');
@@ -184,18 +223,16 @@ try {
                     $userController->handleSkipAverageInfo($userId, $chatId, $messageId, 'cycle');
                     break;
                 case 'symptom_log_start':
-                    $userController->handleLogSymptomStart($userId, $chatId, $messageId, $value);
+                    $userController->handleLogSymptomStart($userId, $chatId, $messageId, $val1);
                     break;
                 case 'symptom_show_cat':
-                    list($dateOpt, $catKey) = explode(':', $value);
-                    $userController->handleSymptomShowCategory($userId, $chatId, $messageId, $dateOpt, $catKey);
+                    $userController->handleSymptomShowCategory($userId, $chatId, $messageId, $val1, $val2);
                     break;
                 case 'symptom_toggle':
-                    list($dateOpt, $catKey, $symKey) = explode(':', $value, 3); // Ensure 3 parts for symptomKey
-                    $userController->handleSymptomToggle($userId, $chatId, $messageId, $dateOpt, $catKey, $symKey);
+                    $userController->handleSymptomToggle($userId, $chatId, $messageId, $val1, $val2, $val3);
                     break;
                 case 'symptom_save_final':
-                    $userController->handleSymptomSaveFinal($userId, $chatId, $messageId, $value);
+                    $userController->handleSymptomSaveFinal($userId, $chatId, $messageId, $val1);
                     break;
                 case 'settings_show':
                     $userController->handleSettings($userId, $chatId, $messageId);
@@ -204,7 +241,7 @@ try {
                     $userController->handleSetNotificationTimePrompt($userId, $chatId, $messageId);
                     break;
                 case 'settings_set_notify_time':
-                    $userController->handleSetNotificationTime($userId, $chatId, $messageId, $value);
+                    $userController->handleSetNotificationTime($userId, $chatId, $messageId, $val1);
                     break;
                 case 'show_guidance':
                     $userController->handleShowGuidance($userId, $chatId, $messageId);
@@ -219,10 +256,28 @@ try {
                     $userController->handleShowSubscriptionPlans($userId, $chatId, $messageId);
                     break;
                 case 'sub_select_plan':
-                    $userController->handleSubscribePlan($userId, $chatId, $messageId, $value);
+                    $userController->handleSubscribePlan($userId, $chatId, $messageId, $val1);
+                    break;
+                case 'user_show_tutorial_topics':
+                    $userController->handleShowTutorialTopics($userId, $chatId, $messageId);
+                    break;
+                case 'user_show_tutorial_topic_content':
+                    $userController->handleShowTutorialTopicContent($userId, $chatId, $messageId, (int)$val1);
+                    break;
+                case 'user_show_tutorial_article':
+                    $userController->handleShowTutorialArticle($userId, $chatId, $messageId, (int)$val1);
+                    break;
+                case 'user_enter_referral_code_prompt':
+                    $userController->handleEnterReferralCodePrompt($userId, $chatId, $messageId);
+                    break;
+                case 'user_delete_account_prompt': // New
+                    $userController->handleDeleteAccountPrompt($userId, $chatId, $messageId);
+                    break;
+                case 'user_delete_account_confirm': // New
+                    $userController->handleDeleteAccountConfirm($userId, $chatId, $messageId);
                     break;
                 default:
-                    error_log("Unknown callback action: " . $action . " Full data: " . $callbackData);
+                    error_log("Unknown user callback action: " . $action . " Full data: " . $callbackData);
                     break;
             }
         }

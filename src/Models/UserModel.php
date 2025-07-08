@@ -230,5 +230,171 @@ class UserModel {
     }
 
     // Add other methods like deleteUser, etc., as needed
+
+    // --- Referral Program Methods ---
+
+    public function generateReferralCode(int $userId): ?string {
+        $user = $this->findUserById($userId);
+        if (!$user) return null;
+
+        if (!empty($user['referral_code'])) {
+            return $user['referral_code'];
+        }
+
+        // Generate a unique 6-8 character alphanumeric code
+        $isUnique = false;
+        $newCode = '';
+        $maxTries = 10; // Prevent infinite loop
+        $tryCount = 0;
+        while (!$isUnique && $tryCount < $maxTries) {
+            $newCode = substr(str_shuffle(str_repeat('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', 8)), 0, 8);
+            $stmt = $this->db->prepare("SELECT id FROM users WHERE referral_code = :code");
+            $stmt->bindParam(':code', $newCode);
+            $stmt->execute();
+            if (!$stmt->fetch()) {
+                $isUnique = true;
+            }
+            $tryCount++;
+        }
+
+        if (!$isUnique) {
+            error_log("Failed to generate a unique referral code for user {$userId} after {$maxTries} tries.");
+            return null; // Could not generate a unique code
+        }
+
+        $sql = "UPDATE users SET referral_code = :code WHERE id = :id AND referral_code IS NULL";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':code', $newCode);
+        $stmt->bindParam(':id', $userId, PDO::PARAM_INT);
+        if ($stmt->execute() && $stmt->rowCount() > 0) {
+            return $newCode;
+        }
+        // If rowCount is 0, it might mean referral_code was set by a concurrent process, re-fetch.
+        $updatedUser = $this->findUserById($userId);
+        return $updatedUser['referral_code'] ?? null;
+    }
+
+    public function findUserByReferralCode(string $code) {
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE referral_code = :code");
+        $stmt->bindParam(':code', $code);
+        $stmt->execute();
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Applies bonus days to a user. Extends trial or active subscription.
+     * @param int $userId
+     * @param int $bonusDays
+     * @return bool
+     */
+    public function applyReferralBonus(int $userId, int $bonusDays): bool {
+        $user = $this->findUserById($userId);
+        if (!$user) return false;
+
+        $newEndDate = null;
+        $updateField = null;
+
+        if ($user['subscription_status'] === 'active' && !empty($user['subscription_ends_at'])) {
+            $currentEnd = new \DateTime($user['subscription_ends_at']);
+            // If subscription is already past, bonus starts from now. Otherwise, extend.
+            $baseDate = ($currentEnd < new \DateTime()) ? new \DateTime() : $currentEnd;
+            $baseDate->add(new \DateInterval("P{$bonusDays}D"));
+            $newEndDate = $baseDate->format('Y-m-d H:i:s');
+            $updateField = 'subscription_ends_at';
+        } elseif ($user['subscription_status'] === 'free_trial' && !empty($user['trial_ends_at'])) {
+            $currentEnd = new \DateTime($user['trial_ends_at']);
+            $baseDate = ($currentEnd < new \DateTime()) ? new \DateTime() : $currentEnd;
+            $baseDate->add(new \DateInterval("P{$bonusDays}D"));
+            $newEndDate = $baseDate->format('Y-m-d H:i:s');
+            $updateField = 'trial_ends_at';
+        } else { // No active sub or trial (e.g. status 'none' or 'expired')
+            // Start a new trial period with bonus days
+            $baseDate = new \DateTime();
+            $baseDate->add(new \DateInterval("P{$bonusDays}D"));
+            $newEndDate = $baseDate->format('Y-m-d H:i:s');
+
+            $sql = "UPDATE users SET trial_ends_at = :new_end_date, subscription_status = 'free_trial', updated_at = CURRENT_TIMESTAMP WHERE id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bindParam(':new_end_date', $newEndDate);
+            $stmt->bindParam(':id', $userId, PDO::PARAM_INT);
+            return $stmt->execute();
+        }
+
+        if ($updateField && $newEndDate) {
+            $sql = "UPDATE users SET {$updateField} = :new_end_date, updated_at = CURRENT_TIMESTAMP WHERE id = :id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bindParam(':new_end_date', $newEndDate);
+            $stmt->bindParam(':id', $userId, PDO::PARAM_INT);
+            return $stmt->execute();
+        }
+        return false;
+    }
+
+    public function countReferralsThisMonth(int $referrerUserId): int {
+        $firstDayOfMonth = date('Y-m-01 00:00:00');
+        $lastDayOfMonth = date('Y-m-t 23:59:59'); // 't' gives number of days in month
+
+        $sql = "SELECT COUNT(id) as referral_count FROM users
+                WHERE referred_by_user_id = :referrer_id
+                AND created_at >= :start_date AND created_at <= :end_date";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':referrer_id', $referrerUserId, PDO::PARAM_INT);
+        $stmt->bindParam(':start_date', $firstDayOfMonth);
+        $stmt->bindParam(':end_date', $lastDayOfMonth);
+        $stmt->execute();
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result ? (int)$result['referral_count'] : 0;
+    }
+
+    /**
+     * Deletes a user account and handles related data cleanup.
+     * @param int $userId The internal ID of the user to delete.
+     * @return bool True on success, false on failure.
+     */
+    public function deleteUserAccount(int $userId): bool {
+        $this->db->beginTransaction();
+        try {
+            // 1. Find the user to get their hashed ID and partner's hashed ID (if any)
+            $userToDelete = $this->findUserById($userId);
+            if (!$userToDelete) {
+                $this->db->rollBack();
+                error_log("DeleteUserAccount: User with ID {$userId} not found.");
+                return false; // User not found
+            }
+            $userHashedId = $userToDelete['telegram_id_hash'];
+            $partnerHashedId = $userToDelete['partner_telegram_id_hash'];
+
+            // 2. If partnered, unlink the partner first
+            if ($partnerHashedId) {
+                $stmtUnlinkPartner = $this->db->prepare(
+                    "UPDATE users SET partner_telegram_id_hash = NULL, updated_at = CURRENT_TIMESTAMP
+                     WHERE telegram_id_hash = :partner_hashed_id AND partner_telegram_id_hash = :user_hashed_id"
+                );
+                $stmtUnlinkPartner->bindParam(':partner_hashed_id', $partnerHashedId);
+                $stmtUnlinkPartner->bindParam(':user_hashed_id', $userHashedId);
+                $stmtUnlinkPartner->execute();
+            }
+
+            // 3. Delete the user record from the 'users' table.
+            // Foreign key constraints should handle related data:
+            // - `logged_symptoms` (ON DELETE CASCADE)
+            // - `transactions` (ON DELETE CASCADE)
+            // - `users.referred_by_user_id` (ON DELETE SET NULL for other users who were referred by this user)
+            $stmtDeleteUser = $this->db->prepare("DELETE FROM users WHERE id = :user_id");
+            $stmtDeleteUser->bindParam(':user_id', $userId, PDO::PARAM_INT);
+            $deleteSuccess = $stmtDeleteUser->execute();
+
+            if (!$deleteSuccess) {
+                throw new \Exception("Failed to delete user record for ID {$userId}");
+            }
+
+            $this->db->commit();
+            return true;
+        } catch (\Exception $e) {
+            $this->db->rollBack();
+            error_log("Error deleting user account for ID {$userId}: " . $e->getMessage());
+            return false;
+        }
+    }
 }
 ?>

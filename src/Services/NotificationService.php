@@ -220,50 +220,89 @@ class NotificationService {
     }
 
     private function sendDailyMessage(array $user, ?array $partnerUser, \Services\CycleService $cycleService, string $userRole): void {
-        $userChatId = $user['decrypted_chat_id'];
+        // $user is the recipient of the message.
+        // $partnerUser is the menstruating partner if $userRole is 'partner'.
+        // $cycleService is for the menstruating user's cycle.
+
+        $recipientChatId = $user['decrypted_chat_id'];
         $currentPhase = $cycleService->getCurrentCyclePhase();
+        $today = date('Y-m-d');
 
-        // Basic, static messages based on phase. Will be replaced by Educational Content System.
-        $userMessage = "";
-        $partnerMessageContent = ""; // Content for partner, if any
+        $criteria = [
+            'cycle_phase' => $currentPhase,
+            'target_roles' => []
+        ];
 
-        switch ($currentPhase) {
-            case 'menstruation':
-                $userMessage = "روزهای پریود زمان استراحت و توجه به بدن است. مایعات گرم بنوش و به خودت سخت نگیر. ☕";
-                $partnerMessageContent = "همراه شما در دوران پریود است. حمایت عاطفی و کمک در کارهای روزمره می‌تواند بسیار مفید باشد.";
-                break;
-            case 'follicular':
-                $userMessage = "فاز فولیکولار شروع شده! سطح انرژی معمولا بالاتر می‌رود. زمان خوبی برای شروع پروژه‌های جدیده. 🌱";
-                $partnerMessageContent = "همراه شما در فاز فولیکولار است. معمولا انرژی بیشتری دارد و زمان مناسبی برای فعالیت‌های مشترک است.";
-                break;
-            case 'ovulation':
-                $userMessage = "نزدیک به زمان تخمک‌گذاری هستی. برخی در این دوران احساس سرزندگی بیشتری می‌کنند. 🥚";
-                $partnerMessageContent = "همراه شما نزدیک به زمان تخمک‌گذاری است. سطح انرژی و میل جنسی ممکن است افزایش یابد.";
-                break;
-            case 'luteal':
-                $userMessage = "فاز لوتئال. ممکنه کمی احساس خستگی یا تحریک‌پذیری کنی. مراقبت از خودت رو فراموش نکن. 🍂";
-                $partnerMessageContent = "همراه شما در فاز لوتئال (پیش از پریود) است. ممکن است کمی حساس‌تر یا خسته‌تر باشد. صبوری و درک متقابل مهم است.";
-                break;
+        if ($userRole === 'menstruating') {
+            $criteria['target_roles'] = ['menstruating', 'both'];
+            // Fetch logged symptoms for the menstruating user for today
+            $rawLoggedSymptoms = $this->symptomModel->getLoggedSymptomsForDate($user['id'], $today);
+            $loggedSymptomKeys = [];
+            foreach ($rawLoggedSymptoms as $s) {
+                $loggedSymptomKeys[] = $s['category_key'] . '_' . $s['symptom_key'];
+            }
+            if (!empty($loggedSymptomKeys)) {
+                $criteria['active_symptom_keys'] = $loggedSymptomKeys;
+            }
+        } elseif ($userRole === 'partner') {
+            $criteria['target_roles'] = ['partner', 'both'];
+            // If partner is receiving tip about menstruating user, symptoms of menstruating user are relevant
+            if ($partnerUser) { // $partnerUser here is the menstruating user
+                 $rawLoggedSymptoms = $this->symptomModel->getLoggedSymptomsForDate($partnerUser['id'], $today);
+                 $loggedSymptomKeys = [];
+                 foreach ($rawLoggedSymptoms as $s) {
+                    $loggedSymptomKeys[] = $s['category_key'] . '_' . $s['symptom_key'];
+                 }
+                 if (!empty($loggedSymptomKeys)) {
+                    $criteria['active_symptom_keys'] = $loggedSymptomKeys;
+                }
+            }
         }
 
-        if ($userRole === 'menstruating' && !empty($userMessage)) {
-            // if (!$this->hasNotificationBeenSentRecently($user['id'], 'daily_tip_user_' . $currentPhase, date('Y-m-d'))) {
-                 $this->telegramAPI->sendMessage($userChatId, "☀️ پیام روزانه شما:\n" . $userMessage);
-            //     $this->markNotificationAsSent($user['id'], 'daily_tip_user_' . $currentPhase, date('Y-m-d'));
-            // }
+        if (empty($criteria['target_roles'])) return;
+
+        // TODO: Implement idempotency for daily tips (e.g., don't send same tip ID within X days)
+        // if ($this->hasDailyTipBeenSentRecently($user['id'], $currentPhase, $today)) return;
+
+        $contentResults = $this->educationalContentModel->getContentForNotifications($criteria, 1);
+        $messageText = "";
+        $keyboard = null;
+
+        if (!empty($contentResults)) {
+            $contentToSend = $contentResults[0];
+            $messagePrefix = ($userRole === 'partner') ? "☀️ نکته روز برای همراهی بهتر با یار شما:\n\n" : "☀️ پیام و نکته روز برای شما:\n\n";
+            $messageText = $messagePrefix;
+
+            if (!empty($contentToSend['title'])) {
+                 $messageText .= "*" . $contentToSend['title'] . "*\n";
+            }
+            $messageText .= $contentToSend['content_data']; // Already decrypted by model
+
+            $inlineKeyboard = [];
+            if (!empty($contentToSend['read_more_link'])) {
+                $inlineKeyboard[] = [['text' => " مطالعه بیشتر 🔗", 'url' => $contentToSend['read_more_link']]];
+            }
+            if (count($inlineKeyboard) > 0) {
+                $keyboard = ['inline_keyboard' => $inlineKeyboard];
+            }
+
+            if (!empty($contentToSend['image_url']) && $contentToSend['content_type'] === 'text_with_image') {
+                 // For simplicity, append as text. sendPhoto is a separate consideration.
+                 $messageText .= "\n\nتصویر: " . $contentToSend['image_url'];
+            }
+        } else {
+            // Fallback generic message
+            if ($userRole === 'menstruating') {
+                $messageText = "☀️ امیدواریم روز خوبی داشته باشید! به زودی نکات و اطلاعات بیشتری برای شما خواهیم داشت.";
+            } elseif ($userRole === 'partner') {
+                 $messageText = "☀️ به یاد داشته باشید که حمایت شما از همراهتان ارزشمند است. به زودی نکات بیشتری برایتان ارسال می‌شود.";
+            }
         }
 
-        if ($partnerUser && !empty($partnerUser['decrypted_chat_id']) && !empty($partnerMessageContent)) {
-            // if (!$this->hasNotificationBeenSentRecently($partnerUser['id'], 'daily_tip_partner_' . $currentPhase, date('Y-m-d'))) {
-                $partnerChatId = $partnerUser['decrypted_chat_id'];
-                $this->telegramAPI->sendMessage($partnerChatId, "☀️ پیام روزانه برای شما (درباره همراهتان):\n" . $partnerMessageContent);
-            //    $this->markNotificationAsSent($partnerUser['id'], 'daily_tip_partner_' . $currentPhase, date('Y-m-d'));
-            // }
-        } elseif ($userRole === 'partner' && !empty($partnerMessageContent) && !$partnerUser) {
-            // This case is when the current $user IS the partner, and $partnerUser is their menstruating partner (passed in reverse)
-            // The logic in processUserNotifications needs to handle passing the correct entities.
-            // For now, let's assume $partnerMessageContent is for the partner of the cycle-tracking user.
-            // This daily message is primarily for the partner of the menstruating user.
+        if (!empty($messageText)) {
+            $this->telegramAPI->sendMessage($recipientChatId, $messageText, $keyboard, 'Markdown');
+            // TODO: Mark this tip type/ID as sent for today/this cycle for this user
+        }
         }
     }
 
