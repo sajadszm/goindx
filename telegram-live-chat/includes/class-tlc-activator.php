@@ -27,7 +27,42 @@ class TLC_Activator {
 
         // Flush rewrite rules if any custom post types or taxonomies are registered (not in this phase)
         // flush_rewrite_rules();
+
+        // Add custom user role and capabilities
+        self::add_custom_roles_and_caps();
     }
+
+    /**
+     * Adds custom user roles and capabilities for the plugin.
+     * @since 0.9.0
+     */
+    private static function add_custom_roles_and_caps() {
+        $agent_role_slug = TLC_PLUGIN_PREFIX . 'chat_agent';
+        $agent_role_display_name = __('Chat Agent', 'telegram-live-chat');
+
+        // Define capabilities
+        $tlc_capabilities = array(
+            'read_tlc_chat_sessions'         => true, // View sessions in the new live dashboard
+            'reply_tlc_chat_sessions'        => true, // Reply to chats from WP Admin
+            'view_tlc_chat_history'          => true, // Access existing chat history page
+            'access_tlc_live_chat_dashboard' => true, // Access the new live chat dashboard page
+            // Future: 'edit_tlc_settings', 'delete_tlc_chats', etc.
+        );
+
+        // Add the role with its capabilities
+        add_role( $agent_role_slug, $agent_role_display_name, $tlc_capabilities );
+
+        // Add capabilities to Administrator role
+        $admin_role = get_role( 'administrator' );
+        if ( $admin_role ) {
+            foreach ( $tlc_capabilities as $cap => $grant ) {
+                if ( $grant ) {
+                    $admin_role->add_cap( $cap );
+                }
+            }
+        }
+    }
+
 
     /**
      * Create database tables needed for the plugin.
@@ -74,10 +109,12 @@ class TLC_Activator {
             telegram_message_id BIGINT NULL,
             is_read BOOLEAN NOT NULL DEFAULT 0,
             page_url TEXT NULL,
+            agent_wp_user_id BIGINT UNSIGNED NULL,
             PRIMARY KEY  (message_id),
             KEY session_id (session_id),
             KEY sender_type (sender_type),
-            KEY telegram_message_id (telegram_message_id)
+            KEY telegram_message_id (telegram_message_id),
+            KEY agent_wp_user_id (agent_wp_user_id)
         ) $charset_collate;";
         dbDelta( $sql_messages );
     }

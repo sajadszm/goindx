@@ -1,0 +1,228 @@
+jQuery(document).ready(function($) {
+    'use strict';
+
+    const $sessionListItems = $('#tlc-session-list-items');
+    const $chatAreaHeaderName = $('#tlc-current-chat-visitor-name');
+    const $adminChatMessages = $('#tlc-admin-chat-messages');
+    const $adminReplyArea = $('#tlc-admin-reply-area');
+    const $adminReplyTextarea = $('#tlc-admin-reply-textarea');
+    const $noChatSelectedMsg = $('.tlc-no-chat-selected');
+
+    let currentSessionId = null;
+    let lastMessageIdReceived = 0;
+    let messagePollingInterval = null;
+    const POLLING_INTERVAL_MS = 5000; // Poll every 5 seconds
+
+    // Localized data will be available via tlc_admin_chat_vars
+    // e.g., tlc_admin_chat_vars.api_nonce, tlc_admin_chat_vars.rest_url
+
+    function fetchSessions() {
+        $sessionListItems.html('<p>' + tlc_admin_chat_vars.i18n.loadingChats + '</p>'); // Use localized string
+
+        $.ajax({
+            url: tlc_admin_chat_vars.rest_url + 'tlc/v1/sessions',
+            method: 'GET',
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader('X-WP-Nonce', tlc_admin_chat_vars.api_nonce);
+            },
+            data: {
+                status: 'pending_agent,active', // Fetch both pending and active
+                orderby: 'last_active_time',
+                order: 'desc',
+                per_page: 50 // Max sessions to show in this basic list
+            },
+            success: function(sessions) {
+                $sessionListItems.empty();
+                if (sessions && sessions.length > 0) {
+                    sessions.forEach(function(session) {
+                        const displayName = session.visitor_name || session.visitor_email || (tlc_admin_chat_vars.i18n.visitor + ' ' + session.visitor_token.substring(0, 8));
+                        const sessionItem = $('<div class="tlc-session-item"></div>')
+                            .attr('data-session-id', session.session_id)
+                            .attr('data-visitor-name', displayName) // Store for header
+                            .html('<strong>' + escapeHtml(displayName) + '</strong><p><small>' + tlc_admin_chat_vars.i18n.status + ': ' + escapeHtml(session.status) + '<br>' + tlc_admin_chat_vars.i18n.lastActive + ': ' + escapeHtml(session.last_active_time) + '</small></p>');
+                        $sessionListItems.append(sessionItem);
+                    });
+                } else {
+                    $sessionListItems.html('<p>' + tlc_admin_chat_vars.i18n.noActiveChats + '</p>');
+                }
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                $sessionListItems.html('<p>' + tlc_admin_chat_vars.i18n.errorLoadingChats + '</p>');
+                console.error("Error fetching sessions:", textStatus, errorThrown);
+            }
+        });
+    }
+
+    function loadChatMessages(sessionId, visitorName) {
+        currentSessionId = sessionId;
+        lastMessageIdReceived = 0; // Reset for new chat
+        $adminChatMessages.empty();
+        $noChatSelectedMsg.hide();
+        $chatAreaHeaderName.text(tlc_admin_chat_vars.i18n.chatWith + ' ' + visitorName);
+        $adminReplyArea.show();
+        $adminReplyTextarea.focus();
+
+        // Highlight active session
+        $sessionListItems.find('.tlc-session-item').removeClass('active');
+        $sessionListItems.find('.tlc-session-item[data-session-id="' + sessionId + '"]').addClass('active');
+
+        if (messagePollingInterval) {
+            clearInterval(messagePollingInterval);
+        }
+
+        fetchMessagesForSession(sessionId, true); // Initial fetch
+
+        messagePollingInterval = setInterval(function() {
+            fetchMessagesForSession(sessionId, false);
+        }, POLLING_INTERVAL_MS);
+    }
+
+    function fetchMessagesForSession(sessionId, isInitialLoad) {
+        if (currentSessionId !== sessionId) return; // Switched chat
+
+        let ajaxData = { per_page: 50 }; // Load more initially
+        if (!isInitialLoad && lastMessageIdReceived > 0) {
+            ajaxData.since_message_id = lastMessageIdReceived;
+            ajaxData.per_page = 100; // Fetch all new since last
+        }
+
+
+        $.ajax({
+            url: tlc_admin_chat_vars.rest_url + 'tlc/v1/sessions/' + sessionId + '/messages',
+            method: 'GET',
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader('X-WP-Nonce', tlc_admin_chat_vars.api_nonce);
+            },
+            data: ajaxData,
+            success: function(messages) {
+                if (messages && messages.length > 0) {
+                    messages.forEach(appendAdminChatMessage);
+                    scrollToAdminChatBottom();
+                }
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                console.error("Error fetching messages for session " + sessionId + ":", textStatus, errorThrown);
+                // Optionally show an error in the chat window
+            }
+        });
+    }
+
+    function appendAdminChatMessage(message) {
+        if (message.message_id > lastMessageIdReceived) {
+            lastMessageIdReceived = message.message_id;
+        }
+        let senderName = '';
+        if (message.sender_type === 'visitor') {
+            // Get visitor name from current session data if available, or use a default
+            const activeSessionItem = $sessionListItems.find('.tlc-session-item.active');
+            senderName = activeSessionItem.length ? activeSessionItem.data('visitor-name') : tlc_admin_chat_vars.i18n.visitor;
+        } else if (message.sender_type === 'agent') {
+            // Here, message.telegram_user_id or a future message.agent_wp_user_id could be used
+            // to fetch agent's display name if we store it. For now, generic.
+            senderName = tlc_admin_chat_vars.i18n.agent;
+             if (message.agent_wp_user_id && tlc_admin_chat_vars.agents && tlc_admin_chat_vars.agents[message.agent_wp_user_id]) {
+                senderName = tlc_admin_chat_vars.agents[message.agent_wp_user_id].display_name;
+            } else if (message.telegram_user_id) {
+                senderName += ' (TG: ' + message.telegram_user_id + ')';
+            }
+        } else {
+            senderName = tlc_admin_chat_vars.i18n.system;
+        }
+
+        const messageDiv = $('<div class="tlc-message"></div>').addClass(message.sender_type);
+        messageDiv.append($('<div class="tlc-message-sender"></div>').text(senderName));
+        messageDiv.append($('<div class="tlc-message-content"></div>').html(escapeHtml(message.message_content).replace(/\n/g, '<br>'))); // Preserve line breaks
+        // Add timestamp and page URL if needed
+        const meta = $('<small style="display:block; font-size:0.8em; color:#777;"></small>').text(message.timestamp);
+        if (message.page_url) {
+            meta.append(' | ' + tlc_admin_chat_vars.i18n.sentFrom + ': <a href="' + escapeHtml(message.page_url) + '" target="_blank">' + escapeHtml(message.page_url.length > 30 ? message.page_url.substring(0,27)+'...' : message.page_url) + '</a>');
+        }
+        messageDiv.append(meta);
+
+        $adminChatMessages.append(messageDiv);
+    }
+
+    function scrollToAdminChatBottom() {
+        $adminChatMessages.scrollTop($adminChatMessages[0].scrollHeight);
+    }
+
+    // Event delegation for session list items
+    $sessionListItems.on('click', '.tlc-session-item', function() {
+        const sessionId = $(this).data('session-id');
+        const visitorName = $(this).data('visitor-name');
+        if (sessionId && sessionId !== currentSessionId) {
+            loadChatMessages(sessionId, visitorName);
+        }
+    });
+
+    // Initial load
+    if (typeof tlc_admin_chat_vars !== 'undefined') {
+        fetchSessions();
+    } else {
+        console.error("TLC Admin Chat Vars not localized!");
+        $sessionListItems.html('<p>Error: Plugin scripts not loaded correctly.</p>');
+    }
+
+    // Send Reply
+    $('#tlc-admin-send-reply-button').on('click', function() {
+        sendAdminReply();
+    });
+
+    $adminReplyTextarea.on('keypress', function(e) {
+        if (e.which === 13 && !e.shiftKey) { // Enter to send, Shift+Enter for newline
+            e.preventDefault();
+            sendAdminReply();
+        }
+    });
+
+    function sendAdminReply() {
+        const messageText = $adminReplyTextarea.val().trim();
+        if (!messageText || !currentSessionId) {
+            return;
+        }
+
+        // Temporarily disable send button
+        $('#tlc-admin-send-reply-button').prop('disabled', true);
+
+        $.ajax({
+            url: tlc_admin_chat_vars.rest_url + 'tlc/v1/sessions/' + currentSessionId + '/reply',
+            method: 'POST',
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader('X-WP-Nonce', tlc_admin_chat_vars.api_nonce); // REST API nonce
+            },
+            data: {
+                // The nonce for the action itself, if not relying solely on X-WP-Nonce for auth & intent.
+                // For custom endpoints, X-WP-Nonce is usually sufficient for authentication/authorization.
+                // If a specific action nonce was registered with the endpoint, it would be passed here.
+                // We are using 'reply_tlc_chat_sessions' capability check.
+                message_text: messageText
+            },
+            success: function(response) {
+                // Assuming response is the created message object
+                appendAdminChatMessage(response); // Append the successfully sent message
+                scrollToAdminChatBottom();
+                $adminReplyTextarea.val('').focus();
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                console.error("Error sending admin reply:", textStatus, errorThrown, jqXHR.responseJSON);
+                // Display error to admin, e.g., in a small notification area
+                alert(tlc_admin_chat_vars.i18n.errorSendingReply + (jqXHR.responseJSON && jqXHR.responseJSON.message ? ': ' + jqXHR.responseJSON.message : ''));
+            },
+            complete: function() {
+                 $('#tlc-admin-send-reply-button').prop('disabled', false);
+            }
+        });
+    }
+
+    function escapeHtml(unsafe) {
+        if (unsafe === null || typeof unsafe === 'undefined') return '';
+        return unsafe
+             .toString()
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+});

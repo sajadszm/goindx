@@ -100,16 +100,32 @@ if ( $remove_data ) {
 
     // Remove custom database tables
     global $wpdb;
-    // Example: $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}tlc_chat_sessions" );
-    // Example: $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}tlc_chat_messages" );
-    // These table names will be confirmed/defined in Step 3 of Phase 1.
-    // For now, using placeholder names based on the plan.
-    $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}tlc_chat_sessions" );
-    $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}tlc_chat_messages" );
+    $sessions_table = $wpdb->prefix . 'tlc_chat_sessions'; // Use actual prefix from option if stored, or hardcode based on TLC_PLUGIN_PREFIX
+    $messages_table = $wpdb->prefix . 'tlc_chat_messages';
+    $wpdb->query( "DROP TABLE IF EXISTS $sessions_table" );
+    $wpdb->query( "DROP TABLE IF EXISTS $messages_table" );
 
-    // Remove any other plugin-specific data, like user meta or cron jobs.
-    // Example: delete_metadata( 'user', 0, 'tlc_user_preference', '', true );
-    // Example: wp_clear_scheduled_hook( 'tlc_daily_cron_event' );
+    // Remove custom roles and capabilities
+    $agent_role_slug = 'tlc_chat_agent'; // Hardcode as TLC_PLUGIN_PREFIX is not available
+    remove_role( $agent_role_slug );
+
+    $admin_role = get_role( 'administrator' );
+    if ( $admin_role ) {
+        // These must match exactly what was added
+        $tlc_capabilities_to_remove = array(
+            'read_tlc_chat_sessions',
+            'reply_tlc_chat_sessions',
+            'view_tlc_chat_history',
+            'access_tlc_live_chat_dashboard',
+        );
+        foreach ( $tlc_capabilities_to_remove as $cap ) {
+            $admin_role->remove_cap( $cap );
+        }
+    }
+
+    // Clear any scheduled cron jobs
+    wp_clear_scheduled_hook( 'tlc_telegram_polling_cron' ); // Hardcode hook name
+
 }
 
 // Note: The TLC_PLUGIN_PREFIX constant is not available here as the main plugin file is not loaded.

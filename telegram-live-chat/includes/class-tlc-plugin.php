@@ -135,6 +135,7 @@ class TLC_Plugin {
          */
         require_once TLC_PLUGIN_DIR . 'includes/class-tlc-rest-api-controller.php';
 
+
         $this->loader = new TLC_Loader();
 
     }
@@ -189,12 +190,10 @@ class TLC_Plugin {
         $this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_styles' );
         $this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_scripts' );
 
-        // Conditionally add widget to footer or via shortcode
         $display_mode = get_option(TLC_PLUGIN_PREFIX . 'widget_display_mode', 'floating');
         if ($display_mode === 'floating') {
             $this->loader->add_action( 'wp_footer', $plugin_public, 'add_chat_widget_html' );
         }
-        // Register shortcode regardless, it will decide if it should render
         $this->loader->add_shortcode( 'telegram_live_chat_widget', $plugin_public, 'render_chat_widget_shortcode' );
 
 
@@ -433,17 +432,17 @@ class TLC_Plugin {
         // Webhook for new agent message
         $webhook_url_agent_msg = get_option(TLC_PLUGIN_PREFIX . 'webhook_on_new_agent_message_url', '');
         if (!empty($webhook_url_agent_msg)) {
-            $session_data = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}tlc_chat_sessions WHERE session_id = %d", $session_id), ARRAY_A);
+            $session_data_for_webhook = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}tlc_chat_sessions WHERE session_id = %d", $session_id), ARRAY_A);
             $payload = array(
                 'event' => 'new_agent_message',
                 'session_id' => $session_id,
-                'visitor_token' => $session_data ? $session_data['visitor_token'] : null,
+                'visitor_token' => $session_data_for_webhook ? $session_data_for_webhook['visitor_token'] : null,
                 'message_id' => $db_message_id,
                 'telegram_message_id' => $telegram_message_id,
                 'agent_telegram_id' => $agent_telegram_id,
                 'text' => $sanitized_agent_message_text,
                 'timestamp' => $message_data_to_insert['timestamp'],
-                'session_data' => $session_data, // Includes visitor name, email, UTMs etc.
+                'session_data' => $session_data_for_webhook,
             );
             $this->send_webhook($webhook_url_agent_msg, $payload);
         }
@@ -591,11 +590,13 @@ class TLC_Plugin {
         $session = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $sessions_table WHERE visitor_token = %s", $visitor_token ) );
         $session_id = null;
         $is_new_session = false;
+        $session_data_for_webhook = null;
+
 
         if ( $session ) {
             $session_id = $session->session_id;
             $update_data = array( 'last_active_time' => current_time( 'mysql' ) );
-            if ($session->status === 'closed' || $session->status === 'archived') {
+            if ($session->status === 'closed' || $session->status === 'archived' || $session->status === 'pending_agent') { // If pending, make active
                 $update_data['status'] = 'active';
             }
             if ($visitor_name_from_post && (empty($session->visitor_name) || $session->visitor_name !== $visitor_name_from_post)) {
@@ -605,13 +606,17 @@ class TLC_Plugin {
                 $update_data['visitor_email'] = $visitor_email_from_post;
             }
             $wpdb->update( $sessions_table, $update_data, array( 'session_id' => $session_id ) );
+            $session_data_for_webhook = (array) $wpdb->get_row($wpdb->prepare("SELECT * FROM $sessions_table WHERE session_id = %d", $session_id), ARRAY_A);
+
         } else {
             $is_new_session = true;
             $session_data_for_insert = array(
                 'visitor_token' => $visitor_token, 'wp_user_id' => $wp_user_id > 0 ? $wp_user_id : null,
                 'start_time' => current_time( 'mysql' ), 'last_active_time' => current_time( 'mysql' ),
-                'status' => 'active', 'visitor_ip' => $visitor_ip,
-                'visitor_user_agent' => $visitor_user_agent, 'initial_page_url' => $current_page_url,
+                'status' => 'pending_agent', // New sessions start as pending_agent
+                'visitor_ip' => $visitor_ip,
+                'visitor_user_agent' => $visitor_user_agent,
+                'initial_page_url' => $current_page_url,
                 'referer' => isset($_SERVER['HTTP_REFERER']) ? esc_url_raw($_SERVER['HTTP_REFERER']) : null,
                 'visitor_name' => $visitor_name_from_post,
                 'visitor_email' => $visitor_email_from_post,
@@ -625,8 +630,8 @@ class TLC_Plugin {
 
             $wpdb->insert( $sessions_table, $session_data_for_insert );
             $session_id = $wpdb->insert_id;
-            // For webhook payload, get the full new session data
-            $session = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $sessions_table WHERE session_id = %d", $session_id ) );
+            $session_data_for_webhook = $session_data_for_insert; // Use data we just prepared
+            $session_data_for_webhook['session_id'] = $session_id; // Add session ID to it
         }
 
         if ( ! $session_id ) {
@@ -635,8 +640,10 @@ class TLC_Plugin {
         }
 
         $message_data_to_insert = array(
-            'session_id' => $session_id, 'sender_type' => 'visitor',
-            'message_content' => $message_text, 'timestamp' => current_time( 'mysql' ),
+            'session_id' => $session_id,
+            'sender_type' => 'visitor',
+            'message_content' => $message_text,
+            'timestamp' => current_time( 'mysql' ),
             'page_url' => $current_page_url,
         );
         $message_inserted = $wpdb->insert( $messages_table, $message_data_to_insert);
@@ -650,14 +657,14 @@ class TLC_Plugin {
         // Trigger Webhooks
         if ($is_new_session) {
             $webhook_url_start = get_option(TLC_PLUGIN_PREFIX . 'webhook_on_chat_start_url', '');
-            if (!empty($webhook_url_start)) {
+            if (!empty($webhook_url_start) && $session_data_for_webhook) {
                 $payload = array(
                     'event' => 'chat_start',
                     'session_id' => $session_id,
                     'visitor_token' => $visitor_token,
-                    'timestamp' => $session->start_time, // Use actual session start time
-                    'session_data' => (array) $session, // Send full session data
-                    'first_message' => array( // Include first message details
+                    'timestamp' => $session_data_for_webhook['start_time'],
+                    'session_data' => $session_data_for_webhook,
+                    'first_message' => array(
                         'message_id' => $db_message_id,
                         'text' => $message_text,
                         'page_url' => $current_page_url,
@@ -669,6 +676,7 @@ class TLC_Plugin {
         }
         $webhook_url_visitor_msg = get_option(TLC_PLUGIN_PREFIX . 'webhook_on_new_visitor_message_url', '');
         if (!empty($webhook_url_visitor_msg)) {
+             $current_session_data = $wpdb->get_row($wpdb->prepare("SELECT visitor_name, visitor_email FROM $sessions_table WHERE session_id = %d", $session_id), ARRAY_A);
              $payload = array(
                 'event' => 'new_visitor_message',
                 'session_id' => $session_id,
@@ -677,23 +685,16 @@ class TLC_Plugin {
                 'text' => $message_text,
                 'page_url' => $current_page_url,
                 'timestamp' => $message_data_to_insert['timestamp'],
-                'visitor_name' => $session->visitor_name ?? $visitor_name_from_post,
-                'visitor_email' => $session->visitor_email ?? $visitor_email_from_post,
+                'visitor_name' => $current_session_data['visitor_name'] ?? $visitor_name_from_post,
+                'visitor_email' => $current_session_data['visitor_email'] ?? $visitor_email_from_post,
             );
             $this->send_webhook($webhook_url_visitor_msg, $payload);
         }
 
-
         $bot_token = get_option( TLC_PLUGIN_PREFIX . 'bot_token' );
+        $group_chat_id = get_option(TLC_PLUGIN_PREFIX . 'telegram_chat_id_group');
         $admin_user_ids_str = get_option( TLC_PLUGIN_PREFIX . 'admin_user_ids' );
 
-        if ( empty( $bot_token ) ) { // Removed admin_user_ids_str check here, as group might be used
-            error_log(TLC_PLUGIN_PREFIX . 'Telegram bot token not configured. Message ID: ' . $db_message_id);
-            wp_send_json_success( array( 'message' => __( 'Message received. Admin will be notified if configured.', 'telegram-live-chat' ), 'message_id' => $db_message_id ) );
-            return;
-        }
-
-        $group_chat_id = get_option(TLC_PLUGIN_PREFIX . 'telegram_chat_id_group');
         $target_chat_ids = array();
         if (!empty($admin_user_ids_str)) {
             $target_chat_ids = array_merge($target_chat_ids, array_map('trim', explode(',', $admin_user_ids_str)));
@@ -703,12 +704,11 @@ class TLC_Plugin {
         }
         $target_chat_ids = array_unique(array_filter($target_chat_ids));
 
-        if (empty($target_chat_ids)) {
-             error_log(TLC_PLUGIN_PREFIX . 'No Telegram admin/group chat IDs configured. Message ID: ' . $db_message_id);
-             wp_send_json_success( array( 'message' => __( 'Message received. Admin will be notified if configured.', 'telegram-live-chat' ), 'message_id' => $db_message_id ) );
+        if ( empty( $bot_token ) || empty( $target_chat_ids ) ) {
+            error_log(TLC_PLUGIN_PREFIX . 'Telegram bot token or target chat IDs not configured. Message ID: ' . $db_message_id);
+            wp_send_json_success( array( 'message' => __( 'Message received. Admin will be notified if configured.', 'telegram-live-chat' ), 'message_id' => $db_message_id ) );
             return;
         }
-
 
         $telegram_api = new TLC_Telegram_Bot_API( $bot_token );
         $telegram_message_content = sprintf(
@@ -722,7 +722,7 @@ class TLC_Plugin {
         if ($session_info_for_telegram) {
             if(!empty($session_info_for_telegram->visitor_name)) $visitor_details_array[] = "Name: " . esc_html($session_info_for_telegram->visitor_name);
             if(!empty($session_info_for_telegram->visitor_email)) $visitor_details_array[] = "Email: " . esc_html($session_info_for_telegram->visitor_email);
-        } elseif ($visitor_name_from_post || $visitor_email_from_post) { // Fallback if session just created and $session_info_for_telegram might not have it yet
+        } elseif ($visitor_name_from_post || $visitor_email_from_post) {
             if($visitor_name_from_post) $visitor_details_array[] = "Name: " . esc_html($visitor_name_from_post);
             if($visitor_email_from_post) $visitor_details_array[] = "Email: " . esc_html($visitor_email_from_post);
         }
@@ -742,7 +742,7 @@ class TLC_Plugin {
         $success_sending_to_all_targets = true;
         foreach ( $target_chat_ids as $chat_id ) {
             if (empty($chat_id)) continue;
-             if (!is_numeric($chat_id) && strpos($chat_id, '@') !== 0) { // Validate chat_id format
+             if (!is_numeric($chat_id) && strpos($chat_id, '@') !== 0) {
                 error_log(TLC_PLUGIN_PREFIX . "Skipping invalid Telegram chat_id for message send: " . $chat_id);
                 continue;
             }
@@ -900,8 +900,8 @@ class TLC_Plugin {
         $args = array(
             'body'    => $payload_json,
             'headers' => array( 'Content-Type' => 'application/json' ),
-            'timeout' => 15, // Seconds
-            'blocking' => false, // Send async if possible (WordPress uses non-blocking if other requests aren't waiting)
+            'timeout' => 15,
+            'blocking' => false,
         );
         if (!empty($secret)) {
             $args['headers']['X-TLC-Signature'] = hash_hmac('sha256', $payload_json, $secret);
@@ -909,9 +909,6 @@ class TLC_Plugin {
         $response = wp_remote_post(esc_url_raw($url), $args);
         if (is_wp_error($response)) {
             error_log(TLC_PLUGIN_PREFIX . "Webhook Error to " . $url . ": " . $response->get_error_message());
-        } else {
-            // Optional: Log success or response code for debugging
-            // error_log(TLC_PLUGIN_PREFIX . "Webhook to " . $url . " sent. Response code: " . wp_remote_retrieve_response_code($response));
         }
     }
 }
