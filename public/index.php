@@ -101,6 +101,9 @@ try {
                 $supportController->handleUserMessage($userId, $chatId, $text, $firstName, $username);
             } elseif ($stateAction === 'admin_awaiting_plan_add' && $userId === ADMIN_TELEGRAM_ID) {
                 $adminController->handleAddSubscriptionPlanDetails($userId, $chatId, $text);
+            } elseif ($stateAction === 'admin_awaiting_broadcast_message' && $userId === ADMIN_TELEGRAM_ID) { // Specific check for broadcast message
+                error_log("index.php - Admin {$userId} sent text for broadcast. StateAction: {$stateAction}. Calling confirmBroadcastMessage.");
+                $adminController->confirmBroadcastMessage($userId, $chatId, $text);
             } elseif (is_string($stateAction) && (strpos($stateAction, 'admin_add_content') === 0 || strpos($stateAction, 'admin_edit_content') === 0) && $userId === ADMIN_TELEGRAM_ID && is_array($stateData)) {
                 $adminController->handleAdminConversation($userId, $chatId, $text, $stateData);
             } elseif ($stateAction === 'admin_awaiting_ticket_id_for_view' && $userId === ADMIN_TELEGRAM_ID) {
