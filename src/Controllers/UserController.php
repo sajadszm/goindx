@@ -1746,47 +1746,47 @@ class UserController {
     }
 
     public function showNotificationSettingsMenu(string $telegramId, int $chatId, ?int $messageId = null) {
-        $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
-        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
-        if (!$user) { $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد."); return; }
+        // --- CONTENT COMMENTED OUT FOR PARSE ERROR DEBUGGING ---
+        // $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
+        // $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        // if (!$user) { $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد."); return; }
 
-        $prefs = $this->userPreferencesModel->getPreferences($user['id']);
-        $decryptedRole = !empty($user['encrypted_role']) ? EncryptionHelper::decrypt($user['encrypted_role']) : null;
+        // $prefs = $this->userPreferencesModel->getPreferences($user['id']);
+        // $decryptedRole = !empty($user['encrypted_role']) ? EncryptionHelper::decrypt($user['encrypted_role']) : null;
 
-        $text = "🔔 **تنظیمات اعلان‌ها**\n\nاعلان‌های زیر را فعال یا غیرفعال کنید:\n";
-        $buttons_flat = [];
+        // $text = "🔔 **تنظیمات اعلان‌ها**\n\nاعلان‌های زیر را فعال یا غیرفعال کنید:\n";
+        // $buttons_flat = [];
 
-        $yes = "✅"; $no = "❌";
+        // $yes = "✅"; $no = "❌";
 
-        // Common notifications for both roles (if applicable to their context)
-        $buttons_flat[] = ['text' => ($prefs['notify_pre_pms'] ? $yes : $no) . " اعلان قبل از PMS", 'callback_data' => 'user_notify_toggle:notify_pre_pms'];
-        $buttons_flat[] = ['text' => ($prefs['notify_period_start'] ? $yes : $no) . " اعلان شروع پریود", 'callback_data' => 'user_notify_toggle:notify_period_start'];
+        // // Common notifications for both roles (if applicable to their context)
+        // $buttons_flat[] = ['text' => ($prefs['notify_pre_pms'] ? $yes : $no) . " اعلان قبل از PMS", 'callback_data' => 'user_notify_toggle:notify_pre_pms'];
+        // $buttons_flat[] = ['text' => ($prefs['notify_period_start'] ? $yes : $no) . " اعلان شروع پریود", 'callback_data' => 'user_notify_toggle:notify_period_start'];
 
-        if ($decryptedRole === 'menstruating') {
-            $buttons_flat[] = ['text' => ($prefs['notify_period_end'] ? $yes : $no) . " اعلان پایان پریود", 'callback_data' => 'user_notify_toggle:notify_period_end'];
-            // Ovulation notification is still tied to users.encrypted_cycle_info -> show_ovulation for now
-            // To add it here, we'd need to migrate that setting or make this button control that JSON field.
-            // For simplicity, keeping it separate for now. User toggles "Show Ovulation" in cycle log prompt.
+        // if ($decryptedRole === 'menstruating') {
+        //     $buttons_flat[] = ['text' => ($prefs['notify_period_end'] ? $yes : $no) . " اعلان پایان پریود", 'callback_data' => 'user_notify_toggle:notify_period_end'];
+        //     $buttons_flat[] = ['text' => ($prefs['notify_daily_educational_self'] ? $yes : $no) . " پیام‌های روزانه خودم", 'callback_data' => 'user_notify_toggle:notify_daily_educational_self'];
+        // } elseif ($decryptedRole === 'partner') {
+        //     $buttons_flat[] = ['text' => ($prefs['notify_daily_educational_partner'] ? $yes : $no) . " پیام‌های روزانه خودم (همراه)", 'callback_data' => 'user_notify_toggle:notify_daily_educational_partner'];
+        // }
 
-            $buttons_flat[] = ['text' => ($prefs['notify_daily_educational_self'] ? $yes : $no) . " پیام‌های روزانه خودم", 'callback_data' => 'user_notify_toggle:notify_daily_educational_self'];
-        } elseif ($decryptedRole === 'partner') {
-            $buttons_flat[] = ['text' => ($prefs['notify_daily_educational_partner'] ? $yes : $no) . " پیام‌های روزانه خودم (همراه)", 'callback_data' => 'user_notify_toggle:notify_daily_educational_partner'];
-        }
+        // $grouped_buttons = [];
+        // if (!empty($buttons_flat)) {
+        //     foreach($buttons_flat as $button) {
+        //         $grouped_buttons[] = [$button];
+        //     }
+        // }
 
-        // Future: Snooze button
-        // $buttons_flat[] = ['text' => "😴 تعویق همه اعلان‌ها", 'callback_data' => 'user_notify_snooze_prompt'];
+        // $grouped_buttons[] = [['text' => "🔙 بازگشت به شخصی‌سازی", 'callback_data' => 'user_personalization_menu_show']];
+        // $keyboard = ['inline_keyboard' => $grouped_buttons];
 
-        $grouped_buttons = [];
-        foreach($buttons_flat as $button) { $grouped_buttons[] = [$button]; } // One button per row
-
-        $grouped_buttons[] = [['text' => "🔙 بازگشت به شخصی‌سازی", 'callback_data' => 'user_personalization_menu_show']];
-        $keyboard = ['inline_keyboard' => $grouped_buttons];
-
-        if ($messageId) {
-            $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
-        } else {
-            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
-        }
+        // if ($messageId) {
+        //     $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
+        // } else {
+        //     $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        // }
+        $this->telegramAPI->sendMessage($chatId, "Notification settings menu is currently under debug.", null);
+        error_log("DEBUG: showNotificationSettingsMenu reached by user {$telegramId}");
     }
 
     public function handleToggleNotificationPref(string $telegramId, int $chatId, int $messageId, string $prefKey) {
