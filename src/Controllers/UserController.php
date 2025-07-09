@@ -1711,38 +1711,41 @@ class UserController {
 
     // --- PERSONALIZATION SETTINGS START ---
     public function showPersonalizationSettingsMenu(string $telegramId, int $chatId, ?int $messageId = null) {
-        $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
-        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
-        if (!$user) { $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد."); return; }
+        // --- CONTENT COMMENTED OUT FOR PARSE ERROR DEBUGGING ---
+        // $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
+        // $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        // if (!$user) { $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد."); return; }
 
-        $decryptedRole = !empty($user['encrypted_role']) ? EncryptionHelper::decrypt($user['encrypted_role']) : null;
+        // $decryptedRole = !empty($user['encrypted_role']) ? EncryptionHelper::decrypt($user['encrypted_role']) : null;
 
-        $text = "🎨 **تنظیمات شخصی‌سازی**\n\nکدام بخش از تنظیمات را می‌خواهید تغییر دهید؟";
+        // $text = "🎨 **تنظیمات شخصی‌سازی**\n\nکدام بخش از تنظیمات را می‌خواهید تغییر دهید؟";
 
-        $buttons_flat = [
-            ['text' => "🔔 تنظیمات اعلان‌ها", 'callback_data' => 'user_notification_settings_show'],
-            // ['text' => "📚 تنظیمات محتوای روزانه", 'callback_data' => 'user_content_settings_show'], // For later
-        ];
+        // $buttons_flat = [
+        //     ['text' => "🔔 تنظیمات اعلان‌ها", 'callback_data' => 'user_notification_settings_show'],
+        //     // ['text' => "📚 تنظیمات محتوای روزانه", 'callback_data' => 'user_content_settings_show'], // For later
+        // ];
 
-        if ($decryptedRole === 'menstruating') {
-            // Future: Add sharing preferences if user is menstruating and has a partner
-            // $buttons_flat[] = ['text' => "🤝 تنظیمات اشتراک‌گذاری با همراه", 'callback_data' => 'user_sharing_settings_show'];
-        }
+        // if ($decryptedRole === 'menstruating') {
+        //     // Future: Add sharing preferences if user is menstruating and has a partner
+        //     // $buttons_flat[] = ['text' => "🤝 تنظیمات اشتراک‌گذاری با همراه", 'callback_data' => 'user_sharing_settings_show'];
+        // }
 
-        $grouped_buttons = [];
-        for ($i = 0; $i < count($buttons_flat); $i += 1) { // One button per row for this menu
-            $grouped_buttons[] = [$buttons_flat[$i]];
-        }
-        $grouped_buttons[] = [['text' => "🔙 بازگشت به تنظیمات اصلی", 'callback_data' => 'settings_show']];
-        $grouped_buttons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
+        // $grouped_buttons = [];
+        // for ($i = 0; $i < count($buttons_flat); $i += 1) { // One button per row for this menu
+        //     $grouped_buttons[] = [$buttons_flat[$i]];
+        // }
+        // $grouped_buttons[] = [['text' => "🔙 بازگشت به تنظیمات اصلی", 'callback_data' => 'settings_show']];
+        // $grouped_buttons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
 
-        $keyboard = ['inline_keyboard' => $grouped_buttons];
+        // $keyboard = ['inline_keyboard' => $grouped_buttons];
 
-        if ($messageId) {
-            $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
-        } else {
-            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
-        }
+        // if ($messageId) {
+        //     $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
+        // } else {
+        //     $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        // }
+        $this->telegramAPI->sendMessage($chatId, "Personalization settings menu is currently under debug.", null);
+        error_log("DEBUG: showPersonalizationSettingsMenu reached by user {$telegramId}");
     }
 
     public function showNotificationSettingsMenu(string $telegramId, int $chatId, ?int $messageId = null) {
