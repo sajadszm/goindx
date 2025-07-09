@@ -395,3 +395,11 @@
 .tlc-rating-form button:hover {
     opacity: 0.9;
 }
+
+/* Consent-based initial hiding */
+.tlc-widget-container.tlc-requires-consent:not(.tlc-consent-given) .tlc-widget-button {
+    display: none !important; /* Hide button if consent is required and not given */
+}
+.tlc-widget-container.tlc-requires-consent:not(.tlc-consent-given) .tlc-chat-widget {
+    display: none !important; /* Also ensure widget itself is hidden */
+}

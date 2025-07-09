@@ -110,6 +110,11 @@ class TLC_Public {
                 'pre_chat_form_enabled' => get_option(TLC_PLUGIN_PREFIX . 'enable_pre_chat_form', false),
                 'satisfaction_rating_enabled' => get_option(TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating', false),
                 'submit_rating_nonce' => wp_create_nonce('tlc_submit_chat_rating_nonce'),
+                'consent_settings' => array(
+                    'required' => get_option(TLC_PLUGIN_PREFIX . 'require_consent_for_chat', false),
+                    'ls_key'   => get_option(TLC_PLUGIN_PREFIX . 'consent_localstorage_key', 'user_cookie_consent'),
+                    'ls_value' => get_option(TLC_PLUGIN_PREFIX . 'consent_localstorage_value', 'granted'),
+                ),
             )
         );
     }
@@ -214,9 +219,9 @@ class TLC_Public {
         $hide_desktop = get_option(TLC_PLUGIN_PREFIX . 'widget_hide_desktop', false);
         $hide_mobile = get_option(TLC_PLUGIN_PREFIX . 'widget_hide_mobile', false);
         $custom_css = get_option(TLC_PLUGIN_PREFIX . 'widget_custom_css', '');
+        $require_consent = get_option(TLC_PLUGIN_PREFIX . 'require_consent_for_chat', false);
 
         $widget_classes = ['tlc-widget-container'];
-        // Add position class only if it's NOT a shortcode (shortcode implies static positioning by theme)
         if (!$is_shortcode && $display_mode === 'floating') {
             if ($position === 'bottom_left') {
                 $widget_classes[] = 'tlc-widget-position-bottom-left';

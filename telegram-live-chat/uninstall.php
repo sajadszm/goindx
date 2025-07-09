@@ -96,6 +96,11 @@ if ( $remove_data ) {
     // Widget Display Mode
     delete_option('tlc_widget_display_mode');
 
+    // Privacy & Consent Options
+    delete_option('tlc_require_consent_for_chat');
+    delete_option('tlc_consent_localstorage_key');
+    delete_option('tlc_consent_localstorage_value');
+
     delete_option('tlc_enable_cleanup_on_uninstall'); // Also delete the option itself
 
     // Remove custom database tables

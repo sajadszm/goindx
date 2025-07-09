@@ -197,6 +197,11 @@ class TLC_Activator {
             // Widget Display Mode Default
             TLC_PLUGIN_PREFIX . 'widget_display_mode' => 'floating',
 
+            // Privacy & Consent Defaults
+            TLC_PLUGIN_PREFIX . 'require_consent_for_chat' => false,
+            TLC_PLUGIN_PREFIX . 'consent_localstorage_key' => 'user_cookie_consent',
+            TLC_PLUGIN_PREFIX . 'consent_localstorage_value' => 'granted',
+
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
             // Add more default options here as needed
         );
