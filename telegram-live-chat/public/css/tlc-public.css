@@ -396,6 +396,69 @@
     opacity: 0.9;
 }
 
+/* Header buttons group */
+.tlc-chat-header .tlc-header-buttons-group {
+    display: flex;
+    align-items: center;
+}
+.tlc-header-button svg { /* Ensure SVGs in header buttons take the right color */
+    fill: var(--tlc-header-text-color);
+    width: 20px; /* Consistent size for icons */
+    height: 20px;
+    display: block; /* Helps with alignment */
+}
+
+
+/* Video Call Placeholders */
+.tlc-video-container {
+    position: relative; /* Or absolute if it overlays messages */
+    width: 100%;
+    background-color: #000; /* Default background for video area */
+    display: none; /* Hidden by default */
+    flex-direction: column; /* If controls are stacked */
+    align-items: center;
+    justify-content: center;
+}
+#tlc-remote-video {
+    width: 100%;
+    max-height: 250px; /* Example max height */
+    background-color: #111;
+    display: block;
+}
+#tlc-local-video {
+    width: 100px;
+    height: 75px;
+    position: absolute;
+    bottom: 10px;
+    right: 10px; /* LTR default */
+    border: 1px solid #444;
+    background-color: #222;
+}
+[dir='rtl'] #tlc-local-video {
+    right: auto;
+    left: 10px;
+}
+#tlc-call-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 5px;
+    background: rgba(0,0,0,0.5);
+    text-align: center;
+    display: none; /* Hidden by default */
+}
+#tlc-call-controls button {
+    margin: 0 5px;
+    /* Basic button styling */
+    padding: 5px 10px;
+    background-color: var(--tlc-button-bg-color);
+    color: var(--tlc-button-icon-color);
+    border: none;
+    border-radius: 3px;
+}
+
+
 /* Consent-based initial hiding */
 .tlc-widget-container.tlc-requires-consent:not(.tlc-consent-given) .tlc-widget-button {
     display: none !important; /* Hide button if consent is required and not given */

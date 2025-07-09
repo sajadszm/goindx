@@ -11,6 +11,14 @@ jQuery(document).ready(function($) {
     const $wooOrdersContent = $('#tlc-woo-orders-content');
     const $wooOrdersList = $('#tlc-woo-orders-list');
 
+    // Voice/Video elements
+    const $adminCallButtonsDiv = $('#tlc-admin-call-buttons');
+    const $adminVoiceCallButton = $('#tlc-admin-voice-call-button');
+    const $adminVideoCallButton = $('#tlc-admin-video-call-button');
+    const $adminVideoContainer = $('#tlc-admin-video-container');
+    const $adminCallControls = $('#tlc-admin-call-controls'); // Placeholder
+    const $adminEndCallButton = $('#tlc-admin-end-call-button'); // Placeholder
+
     let currentSessionId = null;
     let lastMessageIdReceived = 0;
     let messagePollingInterval = null;
@@ -213,8 +221,43 @@ jQuery(document).ready(function($) {
         const visitorName = $(this).data('visitor-name');
         if (sessionId && sessionId !== currentSessionId) {
             loadChatMessages(sessionId, visitorName);
+            if (tlc_admin_chat_vars.voice_chat_enabled || tlc_admin_chat_vars.video_chat_enabled) {
+                $adminCallButtonsDiv.show(); // Show call buttons when a chat is selected
+            }
+        } else if (!sessionId) { // No chat selected or deselected
+             $adminCallButtonsDiv.hide();
+             $adminVideoContainer.hide();
+             $adminCallControls.hide();
         }
     });
+
+    // Voice/Video Call Button Handlers (Conceptual)
+    if (tlc_admin_chat_vars.voice_chat_enabled && $adminVoiceCallButton.length) {
+        $adminVoiceCallButton.on('click', function() {
+            if (!currentSessionId) return;
+            alert('Admin: Voice call to session ' + currentSessionId + ' (Feature Pending)');
+            console.log('TLC Admin: Voice call initiated for session ' + currentSessionId + ' (conceptual).');
+            // $adminChatMessages.hide(); $adminReplyArea.hide();
+            // $adminVideoContainer.show(); $adminCallControls.show();
+        });
+    }
+
+    if (tlc_admin_chat_vars.video_chat_enabled && $adminVideoCallButton.length) {
+        $adminVideoCallButton.on('click', function() {
+            if (!currentSessionId) return;
+            alert('Admin: Video call to session ' + currentSessionId + ' (Feature Pending)');
+            console.log('TLC Admin: Video call initiated for session ' + currentSessionId + ' (conceptual).');
+            // $adminChatMessages.hide(); $adminReplyArea.hide();
+            // $adminVideoContainer.show(); $adminCallControls.show();
+        });
+    }
+    // Placeholder for ending call
+    // $adminEndCallButton.on('click', function() {
+    //    $adminVideoContainer.hide(); $adminCallControls.hide();
+    //    $adminChatMessages.show(); $adminReplyArea.show();
+    //    console.log('TLC Admin: Call ended (conceptual).');
+    // });
+
 
     // Initial load
     if (typeof tlc_admin_chat_vars !== 'undefined') {

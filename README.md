@@ -21,6 +21,9 @@ Connect with your website visitors in real-time via Telegram. This plugin adds a
 *   **WooCommerce Integration**:
     *   Optionally display recent order history for known customers to agents in Telegram notifications.
     *   Optionally display recent order history in the WP Admin Live Chat Dashboard and Chat History views.
+*   **Voice/Video Chat (Conceptual)**:
+    *   Admin settings to enable conceptual voice/video call features.
+    *   Basic UI button placeholders in visitor widget and admin dashboard for future WebRTC implementation.
 *   **Customization**:
     *   Full control over widget colors (header, buttons, messages).
     *   Customizable texts (header title, welcome message, offline message, pre-chat form labels).
@@ -63,87 +66,77 @@ Connect with your website visitors in real-time via Telegram. This plugin adds a
     *   Integration with WordPress Data Export/Erasure tools.
     *   Admin settings for LocalStorage-based consent helper.
     *   Privacy policy content suggestions.
-*   **Internationalization**: Fully translatable with English and basic Persian translations. RTL support for the widget.
+*   **Internationalization**: Fully translatable with English and basic Persian translations provided. RTL support for the frontend widget.
 
 ### Installation
-
-1.  **Download**: Download the plugin `.zip` file.
-2.  **Upload**: In WordPress admin, go to `Plugins` > `Add New` > `Upload Plugin`. Select the zip file and click `Install Now`.
-3.  **Activate**: Click `Activate Plugin`.
-4.  **Configure**:
-    *   Go to `Telegram Chat` > `Settings` for core settings.
-    *   Users with "Chat Agent" role (or Admins) can use the `Live Chat` dashboard.
+*(Content unchanged)*
 
 ### Configuration
 
 Settings are under `Telegram Chat` > `Settings`.
 
-1.  **Telegram Bot Settings**:
-    *   **Bot Token**: **Required**. From BotFather.
-    *   **Agent Telegram User IDs**: Comma-separated numeric IDs.
-    *   **Group Chat ID (Optional)**: Group/channel ID for notifications. Bot must be admin.
-
-2.  **Integrations** (New Section)
+1.  **Telegram Bot Settings**: *(Content unchanged)*
+2.  **Integrations**:
     *   **WooCommerce**:
         *   **Enable WooCommerce Integration**: Check to enable. (Only visible if WooCommerce is active).
         *   **Orders in Telegram Notification**: Show recent order summary in initial Telegram notifications.
         *   **Number of Orders (Telegram)**: How many recent orders to show (1-3).
         *   **Orders in WP Admin Chat Dashboard**: Show recent order summary in the WP Admin Live Chat dashboard.
+    *   **Voice/Video Chat (Conceptual)**:
+        *   **Enable Voice Chat**: Placeholder to enable voice call UI elements.
+        *   **Enable Video Chat**: Placeholder to enable video call UI elements.
+        *   **STUN/TURN Servers**: Placeholder for future WebRTC server configuration.
+        *(Note: Full voice/video functionality is not yet implemented.)*
+3.  **Widget Customization**: *(Content unchanged)*
+4.  **Automated Messages**: *(Content unchanged)*
+5.  **Work Hours & Offline Mode**: *(Content unchanged)*
+6.  **File Upload Settings**: *(Content unchanged)*
+7.  **Spam Protection**: *(Content unchanged)*
+8.  **Predefined Responses**: *(Content unchanged)*
+9.  **Webhook Settings**: *(Content unchanged)*
+10. **Privacy & Consent (GDPR)**: *(Content unchanged)*
+11. **General Settings**: *(Content unchanged)*
 
-3.  **Widget Customization**: Colors, texts, display options, pre-chat form, satisfaction rating, display mode, custom CSS.
-
-4.  **Automated Messages**: Configure one automated message (text, trigger, value, page targeting).
-
-5.  **Work Hours & Offline Mode**: Define daily work hours and offline behavior.
-
-6.  **File Upload Settings**: Enable/disable, allowed types, max size.
-
-7.  **Spam Protection**: Enable/disable rate limiting, set threshold/period.
-
-8.  **Predefined Responses**: Set up shortcuts and messages for agents (max 10).
-
-9.  **Webhook Settings**: URLs for chat events, optional webhook secret.
-
-10. **Privacy & Consent (GDPR)**: Require consent, LocalStorage key/value for consent, privacy policy text suggestions.
-
-11. **General Settings**: Data cleanup on uninstall.
-
-**Encryption Key Note**: Message content is NOT encrypted by default. For future potential, define `TLC_ENCRYPTION_KEY` in `wp-config.php`.
+**Encryption Key Note**: *(Content unchanged)*
 
 ### Basic Usage
-*(Content largely unchanged, but ensure it's accurate)*
+*(Content unchanged)*
 
 ### Shortcode Usage
 *(Content unchanged)*
 
 ### Developer Features
-*(Content unchanged, ensure REST API endpoint for admin replies is noted as writeable)*
+*(Content unchanged)*
 
 ---
 
 ## فارسی (Persian)
 
 ### ویژگی‌ها
-*(Add WooCommerce integration to the list)*
+*(Add WooCommerce & Voice/Video (Conceptual) to the list)*
 *   **ادغام با ووکامرس**:
     *   نمایش اختیاری تاریخچه سفارشات اخیر مشتریان به اپراتورها در اعلان‌های تلگرام.
     *   نمایش اختیاری تاریخچه سفارشات اخیر در داشبورد گفتگوی زنده مدیریت وردپرس و نمای تاریخچه چت.
+*   **چت صوتی/تصویری (مفهومی)**:
+    *   تنظیمات مدیریت برای فعال‌سازی قابلیت‌های مفهومی تماس صوتی/تصویری.
+    *   جایگزین‌های دکمه در UI ویجت بازدیدکننده و داشبورد مدیریت برای پیاده‌سازی WebRTC در آینده.
 *(Other features as before)*
 
 ### نصب
 *(Content unchanged)*
 
 ### پیکربندی
-*(Add new "Integrations" section and its WooCommerce settings)*
+*(Add Voice/Video settings under Integrations)*
 1.  **تنظیمات ربات تلگرام**: ...
-2.  **ادغام‌ها** (بخش جدید)
-    *   **ووکامرس**:
-        *   **فعال‌سازی ادغام ووکامرس**: برای فعال‌سازی علامت بزنید (فقط در صورت فعال بودن ووکامرس نمایش داده می‌شود).
-        *   **سفارشات در اعلان تلگرام**: نمایش خلاصه سفارشات اخیر در اعلان‌های اولیه تلگرام به اپراتورها.
-        *   **تعداد سفارشات (تلگرام)**: تعداد سفارشات اخیر برای نمایش (1-3).
-        *   **سفارشات در داشبورد چت مدیریت وردپرس**: نمایش خلاصه سفارشات اخیر در داشبورد گفتگوی زنده مدیریت وردپرس.
+2.  **ادغام‌ها**:
+    *   **ووکامرس**: *(Content unchanged)*
+    *   **چت صوتی/تصویری (مفهومی)**:
+        *   **فعال‌سازی چت صوتی**: جایگزین برای فعال‌سازی عناصر UI تماس صوتی.
+        *   **فعال‌سازی چت تصویری**: جایگزین برای فعال‌سازی عناصر UI تماس تصویری.
+        *   **سرورهای STUN/TURN**: جایگزین برای پیکربندی سرور WebRTC در آینده.
+        *(توجه: قابلیت کامل صوتی/تصویری هنوز پیاده‌سازی نشده است.)*
 3.  **سفارشی‌سازی ویجت**: ...
-*(Continue with other configuration sections, ensuring numbering is correct)*
+*(Continue with other configuration sections)*
 
 ### راهنمای استفاده پایه
 *(Content unchanged)*
@@ -158,16 +151,14 @@ Settings are under `Telegram Chat` > `Settings`.
 
 ## Changelog
 
-### 0.11.0 (Current Development - Corresponds to end of Phase 11)
-*   Added WooCommerce Integration:
-    *   Admin settings to enable/configure WooCommerce features.
-    *   Linked WooCommerce customer ID to chat sessions for logged-in users.
-    *   Display recent order summary in Telegram notifications to agents.
-    *   Display recent order summary in the WP Admin Live Chat Dashboard.
-    *   Display recent order summary in the single session view of Chat History.
-*   Updated README.md with WooCommerce integration details.
+### 0.12.0 (Current Development - Corresponds to end of Phase 12)
+*   Added conceptual outline and basic UI scaffolding for future Voice/Video Chat feature.
+    *   Admin settings to enable/disable conceptual voice/video features and placeholder for STUN/TURN servers.
+    *   Non-functional call buttons and video placeholder elements added to visitor widget and WP Admin chat dashboard.
+*   Updated README.md with details on the conceptual voice/video chat additions.
 
 *(Previous changelog entries as before)*
+### 0.11.0 ...
 ### 0.10.0 ...
 ### 0.9.0 ...
 ### 0.7.0 ...

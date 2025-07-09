@@ -107,6 +107,11 @@ if ( $remove_data ) {
     delete_option('tlc_woo_orders_in_telegram_count');
     delete_option('tlc_woo_orders_in_admin_dash');
 
+    // Voice/Video Chat Options
+    delete_option('tlc_voice_chat_enable');
+    delete_option('tlc_video_chat_enable');
+    delete_option('tlc_stun_turn_servers');
+
     delete_option('tlc_enable_cleanup_on_uninstall'); // Also delete the option itself
 
     // Remove custom database tables

@@ -14,10 +14,29 @@
         </div>
 
         <div id="tlc-chat-area-panel" class="tlc-chat-area-panel">
-            <div id="tlc-chat-area-header" class="tlc-panel-header">
-                <h2 id="tlc-current-chat-visitor-name"><?php esc_html_e( 'Select a chat', 'telegram-live-chat' ); ?></h2>
-                <div id="tlc-current-chat-session-id" style="font-size:0.8em; color:#555;"></div>
+            <div id="tlc-chat-area-header" class="tlc-panel-header" style="display:flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 id="tlc-current-chat-visitor-name" style="margin-right: 10px; display:inline-block;"><?php esc_html_e( 'Select a chat', 'telegram-live-chat' ); ?></h2>
+                    <span id="tlc-current-chat-session-id" style="font-size:0.8em; color:#555;"></span>
+                </div>
+                <div id="tlc-admin-call-buttons" style="display:none;"> <!-- Initially hidden, shown by JS if chat selected & feature enabled -->
+                    <?php if (get_option(TLC_PLUGIN_PREFIX . 'voice_chat_enable', false)): ?>
+                        <button type="button" id="tlc-admin-voice-call-button" class="button button-secondary" title="<?php esc_attr_e('Start Voice Call (Feature Pending)', 'telegram-live-chat'); ?>"><span class="dashicons dashicons-phone"></span></button>
+                    <?php endif; ?>
+                    <?php if (get_option(TLC_PLUGIN_PREFIX . 'video_chat_enable', false)): ?>
+                        <button type="button" id="tlc-admin-video-call-button" class="button button-secondary" title="<?php esc_attr_e('Start Video Call (Feature Pending)', 'telegram-live-chat'); ?>"><span class="dashicons dashicons-video-alt3"></span></button>
+                    <?php endif; ?>
+                </div>
             </div>
+
+            <div id="tlc-admin-video-container" class="tlc-video-container" style="display:none; background-color: #000; position: relative;">
+                <video id="tlc-admin-local-video" autoplay playsinline muted style="width:120px; height:90px; position:absolute; bottom:10px; right:10px; border:1px solid #333; z-index:10;"></video>
+                <video id="tlc-admin-remote-video" autoplay playsinline style="width:100%; max-height: 300px; display:block;"></video>
+                 <div id="tlc-admin-call-controls" style="display:none; position:absolute; bottom:0; width:100%; text-align:center; padding:5px; background:rgba(0,0,0,0.5);">
+                    <button id="tlc-admin-end-call-button" class="button">End Call</button>
+                </div>
+            </div>
+
             <div id="tlc-admin-chat-messages" class="tlc-admin-chat-messages">
                 <p class="tlc-no-chat-selected"><?php esc_html_e( 'Select a chat from the list to view messages.', 'telegram-live-chat' ); ?></p>
             </div>

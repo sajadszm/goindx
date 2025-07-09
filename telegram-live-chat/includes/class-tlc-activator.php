@@ -210,6 +210,11 @@ class TLC_Activator {
             TLC_PLUGIN_PREFIX . 'woo_orders_in_telegram_count' => 1,
             TLC_PLUGIN_PREFIX . 'woo_orders_in_admin_dash' => true,
 
+            // Voice/Video Chat Defaults
+            TLC_PLUGIN_PREFIX . 'voice_chat_enable' => false,
+            TLC_PLUGIN_PREFIX . 'video_chat_enable' => false,
+            TLC_PLUGIN_PREFIX . 'stun_turn_servers' => "stun:stun.l.google.com:19302\nstun:stun1.l.google.com:19302",
+
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
             // Add more default options here as needed
         );
