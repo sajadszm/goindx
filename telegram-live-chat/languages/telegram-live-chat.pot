@@ -1,0 +1,841 @@
+# Copyright (C) 2023 Your Name
+# This file is distributed under the same license as the Telegram Live Chat plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: Telegram Live Chat 0.5.0\n"
+"Report-Msgid-Bugs-To: https://example.com/plugin-support\n"
+"POT-Creation-Date: 2023-10-27 10:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: Your Name <email@example.com>\n"
+"Language-Team: Your Name <email@example.com>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+"X-Generator: Manually Created\n"
+"X-Domain: telegram-live-chat\n"
+
+#: ../telegram-live-chat.php
+msgid "Telegram Live Chat"
+msgstr ""
+
+#: ../telegram-live-chat.php
+msgid "Integrates a live chat widget on your website that connects with support agents via Telegram."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Telegram Chat"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Telegram Bot Settings"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Configure your Telegram Bot API token and the user IDs of the admins/agents who will receive messages."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "You can get your Bot Token by talking to BotFather on Telegram. You can get User IDs by talking to @userinfobot or similar."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Bot Token"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Agent Telegram User IDs (comma-separated)"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enter comma-separated numeric Telegram User IDs for individual agents."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Group Chat ID for Notifications (Optional)"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enter a Telegram Group Chat ID (e.g., -100123456789) or a public channel username (e.g. @yourchannel) where new chat notifications will be sent. Bot must be an admin in the group/channel."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "General Settings"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Data Cleanup on Uninstall"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable this to remove all plugin data (settings, chat history) when the plugin is uninstalled."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Save Settings"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Telegram Polling Settings"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Configure how the plugin fetches updates (agent replies) from Telegram. Requires WP Cron to be working correctly on your site."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable Telegram Polling"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable polling to fetch agent messages from Telegram."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "If disabled, the plugin will not automatically retrieve messages sent by agents in Telegram."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Polling Interval"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "How often should WordPress check Telegram for new messages? Shorter intervals are more real-time but increase server load."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Every 15 seconds"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Every 30 seconds"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Every 1 minute"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Every 5 minutes"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Widget Customization"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Customize the appearance and text of the chat widget."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Header Background Color"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Header Text Color"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Chat Button Background Color"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Chat Button Icon Color"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Visitor Message Background"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Visitor Message Text"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Agent Message Background"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Agent Message Text"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Widget Header Title"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Welcome Message"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Offline Message"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Widget Position"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Bottom Right"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Bottom Left"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Chat Button Icon Shape"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Circle"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Square"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Hide Chat Button on Desktop"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Hide on desktop screens wider than 768px."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Hide Chat Button on Mobile"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Hide on mobile screens narrower than 768px."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Custom CSS"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Add your own CSS rules for the chat widget. Use with caution."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable Pre-chat Form"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Ask for visitor name and email before starting the chat."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "If enabled, visitors will be prompted for their name (required) and email (optional)."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable Satisfaction Rating"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Allow visitors to rate the chat session."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "If enabled, an \"End Chat\" button will appear, allowing users to rate their experience."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Automated Messages"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Configure a message to be automatically sent to visitors based on certain triggers. For now, one automated message can be configured."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable Automated Message"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable this automated message"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Message Text"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Trigger Type"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Time on Page"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Scroll Depth"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Trigger Value"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Seconds for Time on Page, or % for Scroll Depth."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Page Targeting"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "All Pages"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Specific URL(s)"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Specific URLs (if selected)"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enter full URLs, one per line or comma-separated. Only applies if \"Specific URL(s)\" is chosen for Page Targeting."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Work Hours & Offline Mode"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Define your support availability. The widget can change behavior based on these hours. Uses your WordPress site timezone."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Site Timezone"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "This plugin uses your <a href=\"%s\">WordPress timezone setting</a>. Current server time: %s."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Monday"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Tuesday"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Wednesday"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Thursday"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Friday"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Saturday"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Sunday"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Open"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "From"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "To"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Offline Behavior"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Show Offline Message in Widget"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Hide Chat Widget Completely"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Choose how the chat widget behaves when outside of work hours. The \"Offline Message\" itself is configured under Widget Customization."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "File Upload Settings (Visitor to Agent)"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Configure file upload settings for visitors. Ensure your server has appropriate permissions and upload limits."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable File Uploads"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Allow visitors to upload files in the chat."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Allowed File Types"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Comma-separated list of allowed file extensions (e.g., jpg,png,pdf). Leave empty to allow all types permitted by WordPress."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Max File Size (MB)"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Maximum file size in Megabytes allowed for upload. WordPress PHP limits also apply."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Spam Protection"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Basic spam protection measures for chat messages."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Enable Message Rate Limiting"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Prevent users from sending too many messages in a short period."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Rate Limit: Messages"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Maximum number of messages allowed within the defined period."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Rate Limit: Period (seconds)"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Time period in seconds for the message limit."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Predefined Responses"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Create and manage predefined responses that agents can quickly use. Each response needs a unique shortcut (e.g., /greeting, !policy)."
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Manage Responses"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Shortcut:"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Message:"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Remove"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Add New Response"
+msgstr ""
+
+#: ../admin/class-tlc-admin.php
+msgid "Click \"Add New Response\" to add more. Remember to save changes."
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Chat Session"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Chat Sessions"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Session ID"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Visitor Token"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "WP User"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Status"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Visitor Name"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Visitor Email"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Rating"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Start Time"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Last Active"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Visitor IP"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Actions"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "N/A"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "Guest"
+msgstr ""
+
+#: ../admin/class-tlc-sessions-list-table.php
+msgid "View Messages"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-chat-history-display.php
+msgid "Chat History"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-chat-history-display.php
+msgid "Search Sessions"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "View Chat Session"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "No session ID provided."
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Session not found."
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "&laquo; Back to Chat History"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Details for Session ID: %d"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Initial Page URL"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Referer"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "UTM Source"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "UTM Medium"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "UTM Campaign"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Rating Comment"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Messages"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Visitor"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Agent (TG ID: %s)"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "System"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Sent from:"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "No messages in this session yet."
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "Chat Analytics"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "A basic overview of your chat activity."
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "Overall Stats"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "Total Chat Sessions:"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "Total Messages Exchanged:"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "Average Visitor Rating:"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "N/A (No ratings submitted yet)"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "Advanced Analytics"
+msgstr ""
+
+#: ../admin/partials/tlc-admin-analytics-display.php
+msgid "More detailed analytics like average response time and agent performance will be available in future updates."
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Open Live Chat"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Live Chat"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Close Chat"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Welcome! How can we help you today?"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "We're currently offline. Please leave a message!"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Name *"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Email"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Start Chat"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "End Chat & Rate"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Rate your chat experience:"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Optional comments..."
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Submit Rating"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Thank you for your feedback!"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Type your message..."
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Chat message input"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Send"
+msgstr ""
+
+#: ../public/class-tlc-public.php
+msgid "Upload file"
+msgstr ""
+
+#: ../includes/class-tlc-telegram-bot-api.php
+msgid "Telegram Bot Token is not configured."
+msgstr ""
+
+#: ../includes/class-tlc-telegram-bot-api.php
+msgid "Invalid response from Telegram API."
+msgstr ""
+
+#: ../includes/class-tlc-telegram-bot-api.php
+msgid "File path is not accessible."
+msgstr ""
+
+#: ../includes/class-tlc-telegram-bot-api.php
+msgid "Could not read file contents."
+msgstr ""
+
+#: ../includes/class-tlc-telegram-bot-api.php
+msgid "Invalid response from Telegram API sending document."
+msgstr ""
+
+#: ../includes/class-tlc-telegram-bot-api.php
+msgid "Unknown error sending document."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Nonce verification failed."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Visitor token is required."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "You are sending messages too quickly. Please wait a moment."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Message text cannot be empty."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Could not create or find chat session."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Could not store message."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Message received. Admin will be notified if configured."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "New chat message from visitor (Session: %s):\nPage: %s\n\n%s"
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Message sent!"
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Nonce verification failed for fetch."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Invalid session."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Nonce verification failed for file upload."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "File uploads are disabled."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "No file uploaded."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Visitor token required."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "File too large (max %d MB)."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Invalid allowed file types configured."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Sorry, this file type is not permitted."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Session error for file."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "File: [%1$s](%2$s)"
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "File from visitor (Session: %s, File: %s)\nPage: %s\nURL (for admin reference): %s"
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Invalid rating value."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "No active session found for this visitor to rate."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Could not save rating. Database error."
+msgstr ""
+
+#: ../includes/class-tlc-plugin.php
+msgid "Rating submitted successfully."
+msgstr ""

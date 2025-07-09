@@ -256,6 +256,88 @@
     opacity: 0.9;
 }
 
+/* RTL Specific Styles */
+[dir='rtl'] .tlc-widget-container.tlc-widget-position-bottom-right .tlc-widget-button {
+    right: auto;
+    left: 20px;
+}
+[dir='rtl'] .tlc-widget-container.tlc-widget-position-bottom-right .tlc-chat-widget {
+    right: auto;
+    left: 20px;
+}
+
+[dir='rtl'] .tlc-widget-container.tlc-widget-position-bottom-left .tlc-widget-button {
+    left: auto;
+    right: 20px;
+}
+[dir='rtl'] .tlc-widget-container.tlc-widget-position-bottom-left .tlc-chat-widget {
+    left: auto;
+    right: 20px;
+}
+
+[dir='rtl'] .tlc-chat-header {
+    text-align: right; /* Ensure header text aligns right */
+}
+[dir='rtl'] .tlc-chat-header-title {
+    /* No specific change needed if flex handles it, but could add margin if needed */
+}
+[dir='rtl'] .tlc-chat-header-close {
+    /* No specific change needed for 'times' symbol */
+}
+
+
+[dir='rtl'] .tlc-chat-messages .tlc-message.visitor {
+    margin-left: 0;
+    margin-right: auto; /* Visitor messages on the left in RTL */
+    text-align: right; /* Text within bubble still aligns to its natural direction */
+}
+
+[dir='rtl'] .tlc-chat-messages .tlc-message.agent {
+    margin-right: 0;
+    margin-left: auto; /* Agent messages on the right in RTL */
+    text-align: right; /* Text within bubble still aligns to its natural direction */
+}
+[dir='rtl'] .tlc-chat-messages .tlc-message.system {
+    text-align: right;
+}
+
+[dir='rtl'] .tlc-chat-messages .tlc-message-sender {
+    text-align: right;
+}
+
+
+[dir='rtl'] .tlc-chat-input-area textarea {
+    margin-right: 0;
+    margin-left: 8px; /* Textarea on the right of buttons in RTL if buttons were first */
+    /* If input area is flex, order might need to be changed or rely on natural flex behavior */
+}
+/* If using flex and need to reverse order of items in input area: */
+[dir='rtl'] .tlc-chat-input-area {
+    flex-direction: row-reverse;
+}
+[dir='rtl'] .tlc-chat-input-area .tlc-icon-button {
+    margin-right: 0;
+    margin-left: 5px;
+}
+
+
+[dir='rtl'] .tlc-pre-chat-form label {
+    text-align: right;
+}
+[dir='rtl'] .tlc-pre-chat-form input[type="text"],
+[dir='rtl'] .tlc-pre-chat-form input[type="email"] {
+    text-align: right; /* Input text direction */
+}
+
+[dir='rtl'] .tlc-rating-stars {
+    /* Stars are usually LTR, but container can be aligned */
+    direction: ltr; /* Keep stars LTR even in RTL context for intuitive selection */
+    text-align: center; /* Or right/left as desired for the block */
+}
+[dir='rtl'] .tlc-rating-form textarea {
+    text-align: right;
+}
+
 /* Header buttons common style */
 .tlc-header-button {
     background: none;

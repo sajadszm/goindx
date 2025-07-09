@@ -1,0 +1,191 @@
+# Persian (Farsi) translation for Telegram Live Chat
+# Copyright (C) 2023 Your Name
+# This file is distributed under the same license as the Telegram Live Chat plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: Telegram Live Chat 0.5.0\n"
+"Report-Msgid-Bugs-To: https://example.com/plugin-support\n"
+"POT-Creation-Date: 2023-10-27 10:00+0000\n"
+"PO-Revision-Date: 2023-10-27 10:10+0000\n"
+"Last-Translator: AI Translator (Jules)\n"
+"Language-Team: Persian <support@example.com>\n"
+"Language: fa_IR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Generator: Manually Created\n"
+"X-Domain: telegram-live-chat\n"
+
+#: ../telegram-live-chat.php
+msgid "Telegram Live Chat"
+msgstr "گفتگوی زنده تلگرام"
+
+#: ../telegram-live-chat.php
+msgid "Integrates a live chat widget on your website that connects with support agents via Telegram."
+msgstr "یک ویجت گفتگوی زنده را در وب‌سایت شما ادغام می‌کند که با کارشناسان پشتیبانی از طریق تلگرام ارتباط برقرار می‌کند."
+
+#: ../admin/class-tlc-admin.php
+msgid "Telegram Chat"
+msgstr "چت تلگرام"
+
+#: ../admin/class-tlc-admin.php
+msgid "Telegram Bot Settings"
+msgstr "تنظیمات ربات تلگرام"
+
+#: ../admin/class-tlc-admin.php
+msgid "Configure your Telegram Bot API token and the user IDs of the admins/agents who will receive messages."
+msgstr "توکن API ربات تلگرام خود و شناسه‌های کاربری ادمین‌ها/اپراتورهایی که پیام‌ها را دریافت می‌کنند، پیکربندی کنید."
+
+#: ../admin/class-tlc-admin.php
+msgid "You can get your Bot Token by talking to BotFather on Telegram. You can get User IDs by talking to @userinfobot or similar."
+msgstr "می‌توانید توکن ربات خود را با صحبت کردن با BotFather در تلگرام دریافت کنید. شناسه‌های کاربری را می‌توانید با صحبت کردن با @userinfobot یا موارد مشابه دریافت کنید."
+
+#: ../admin/class-tlc-admin.php
+msgid "Bot Token"
+msgstr "توکن ربات"
+
+#: ../admin/class-tlc-admin.php
+msgid "Agent Telegram User IDs (comma-separated)"
+msgstr "شناسه‌های کاربری تلگرام اپراتورها (جدا شده با کاما)"
+
+#: ../admin/class-tlc-admin.php
+msgid "Enter comma-separated numeric Telegram User IDs for individual agents."
+msgstr "شناسه‌های کاربری عددی تلگرام را برای اپراتورهای فردی وارد کنید، جدا شده با کاما."
+
+#: ../admin/class-tlc-admin.php
+msgid "Group Chat ID for Notifications (Optional)"
+msgstr "شناسه چت گروهی برای اعلان‌ها (اختیاری)"
+
+#: ../admin/class-tlc-admin.php
+msgid "Widget Customization"
+msgstr "سفارشی‌سازی ویجت"
+
+#: ../admin/class-tlc-admin.php
+msgid "Customize the appearance and text of the chat widget."
+msgstr "ظاهر و متن ویجت گفتگو را سفارشی‌سازی کنید."
+
+#: ../admin/class-tlc-admin.php
+msgid "Widget Header Title"
+msgstr "عنوان سربرگ ویجت"
+
+#: ../admin/class-tlc-admin.php
+msgid "Welcome Message"
+msgstr "پیام خوشامدگویی"
+
+#: ../admin/class-tlc-admin.php
+msgid "Offline Message"
+msgstr "پیام آفلاین"
+
+#: ../admin/class-tlc-admin.php
+msgid "Save Settings"
+msgstr "ذخیره تنظیمات"
+
+# --- Frontend Widget Strings ---
+#: ../public/class-tlc-public.php
+msgid "Open Live Chat"
+msgstr "باز کردن گفتگوی زنده"
+
+#: ../public/class-tlc-public.php
+msgid "Live Chat"
+msgstr "گفتگوی زنده"
+
+#: ../public/class-tlc-public.php
+msgid "Close Chat"
+msgstr "بستن گفتگو"
+
+#: ../public/class-tlc-public.php
+msgid "Welcome! How can we help you today?"
+msgstr "خوش آمدید! چگونه می‌توانیم امروز به شما کمک کنیم؟"
+
+#: ../public/class-tlc-public.php
+msgid "We're currently offline. Please leave a message!"
+msgstr "ما در حال حاضر آفلاین هستیم. لطفاً پیام بگذارید!"
+
+#: ../public/class-tlc-public.php
+msgid "Name *"
+msgstr "نام *"
+
+#: ../public/class-tlc-public.php
+msgid "Email"
+msgstr "ایمیل"
+
+#: ../public/class-tlc-public.php
+msgid "Start Chat"
+msgstr "شروع گفتگو"
+
+#: ../public/class-tlc-public.php
+msgid "End Chat & Rate"
+msgstr "پایان گفتگو و امتیازدهی"
+
+#: ../public/class-tlc-public.php
+msgid "Rate your chat experience:"
+msgstr "به تجربه گفتگوی خود امتیاز دهید:"
+
+#: ../public/class-tlc-public.php
+msgid "Optional comments..."
+msgstr "نظرات اختیاری..."
+
+#: ../public/class-tlc-public.php
+msgid "Submit Rating"
+msgstr "ثبت امتیاز"
+
+#: ../public/class-tlc-public.php
+msgid "Thank you for your feedback!"
+msgstr "از بازخورد شما متشکریم!"
+
+#: ../public/class-tlc-public.php
+msgid "Type your message..."
+msgstr "پیام خود را تایپ کنید..."
+
+#: ../public/class-tlc-public.php
+msgid "Chat message input"
+msgstr "ورودی پیام گفتگو"
+
+#: ../public/class-tlc-public.php
+msgid "Send"
+msgstr "ارسال"
+
+#: ../public/class-tlc-public.php
+msgid "Upload file"
+msgstr "بارگذاری فایل"
+
+# --- Error/System Messages (Examples) ---
+#: ../includes/class-tlc-plugin.php
+msgid "Nonce verification failed."
+msgstr "تأیید اعتبار Nonce ناموفق بود."
+
+#: ../includes/class-tlc-plugin.php
+msgid "Visitor token is required."
+msgstr "توکن بازدیدکننده الزامی است."
+
+#: ../includes/class-tlc-plugin.php
+msgid "You are sending messages too quickly. Please wait a moment."
+msgstr "شما پیام‌ها را خیلی سریع ارسال می‌کنید. لطفاً لحظه‌ای صبر کنید."
+
+#: ../includes/class-tlc-plugin.php
+msgid "Message text cannot be empty."
+msgstr "متن پیام نمی‌تواند خالی باشد."
+
+#: ../includes/class-tlc-plugin.php
+msgid "Message sent!"
+msgstr "پیام ارسال شد!"
+
+# ... (Many more strings would follow in a complete file, this is a sample) ...
+
+# Example of a string with a placeholder
+#: ../includes/class-tlc-plugin.php
+msgid "File too large (max %d MB)."
+msgstr "فایل خیلی بزرگ است (حداکثر %d مگابایت)."
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Visitor"
+msgstr "بازدید کننده"
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "Agent (TG ID: %s)"
+msgstr "اپراتور (شناسه تلگرام: %s)"
+
+#: ../admin/partials/tlc-admin-session-messages-display.php
+msgid "System"
+msgstr "سیستم"
