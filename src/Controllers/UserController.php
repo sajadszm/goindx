@@ -1678,11 +1678,9 @@ class UserController {
         }
 
         $actionButtons = [];
-        if (!empty($paginationButtonsRow)) {
-            $actionButtons[] = $paginationButtonsRow;
-        }
-        $actionButtons[] = [['text' => "🔙 بازگشت به منوی تاریخچه", 'callback_data' => 'user_show_history_menu']];
-        $actionButtons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
+        // Simplified keyboard for testing the parse error
+        $actionButtons[] = [['text' => "TEMP: Back to History", 'callback_data' => 'user_show_history_menu']];
+        $actionButtons[] = [['text' => "TEMP: Main Menu", 'callback_data' => 'main_menu_show']];
         $keyboard = ['inline_keyboard' => $actionButtons];
 
         if ($messageId) $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
