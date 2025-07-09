@@ -240,7 +240,14 @@ try {
                 case 'user_show_history_menu': $userController->handleShowHistoryMenu($userId, $chatId, $messageId); break;
                 case 'user_history_periods': $userController->handleShowPeriodHistory($userId, $chatId, $messageId, (int)($val1 ?? 0)); break;
                 case 'user_history_symptoms': $userController->handleShowSymptomHistory($userId, $chatId, $messageId, (int)($val1 ?? 0)); break;
-                default: error_log("Unknown user callback action: {$action}"); break;
+
+                // Personalization Settings Callbacks
+                case 'user_personalization_menu_show': $userController->showPersonalizationSettingsMenu($userId, $chatId, $messageId); break;
+                case 'user_notification_settings_show': $userController->showNotificationSettingsMenu($userId, $chatId, $messageId); break;
+                case 'user_notify_toggle': $userController->handleToggleNotificationPref($userId, $chatId, $messageId, $val1); break;
+                // Add more personalization callbacks here as they are implemented (e.g. content, sharing)
+
+                default: error_log("Unknown user callback action: {$action} with value {$value}"); break;
             }
         }
     }

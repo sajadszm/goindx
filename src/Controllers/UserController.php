@@ -8,6 +8,7 @@ use Models\EducationalContentModel;
 use Models\SubscriptionPlanModel;
 use Models\AppSettingsModel;
 use Models\PeriodHistoryModel;
+use Models\UserPreferencesModel; // Added
 use Telegram\TelegramAPI;
 use Helpers\EncryptionHelper;
 use Services\CycleService;
@@ -18,11 +19,13 @@ class UserController {
     private $symptomsConfig;
     private $symptomModel;
     private $periodHistoryModel;
+    private $userPreferencesModel; // Added
 
     public function __construct(TelegramAPI $telegramAPI) {
         $this->userModel = new UserModel();
         $this->telegramAPI = $telegramAPI;
         $this->periodHistoryModel = new PeriodHistoryModel();
+        $this->userPreferencesModel = new UserPreferencesModel(); // Added
     }
 
     private function loadSymptomsConfig() {
@@ -654,6 +657,7 @@ class UserController {
 
         $settings_buttons_flat = [
             ['text' => "⏰ تنظیم زمان اعلان‌ها", 'callback_data' => 'settings_set_notify_time_prompt'],
+            ['text' => "🎨 شخصی‌سازی‌ها", 'callback_data' => 'user_personalization_menu_show'], // New Button
             ['text' => "🗑 حذف حساب کاربری", 'callback_data' => 'user_delete_account_prompt']
         ];
 
@@ -1074,6 +1078,7 @@ class UserController {
         if (!isset($cycleInfo['avg_period_length']) || !isset($cycleInfo['avg_cycle_length'])) {
             $this->handleAskAverageLengths($telegramId, $chatId, null);
         } else {
+            error_log("UserController::handleCycleLogDate - Calling showMainMenu after cycle info fully updated for user {$telegramId}");
             $this->showMainMenu($chatId, "اطلاعات دوره شما به‌روز شد.");
         }
     }
@@ -1146,6 +1151,7 @@ class UserController {
         $this->userModel->updateUser($hashedTelegramId, ['encrypted_cycle_info' => EncryptionHelper::encrypt(json_encode($cycleInfo))]);
 
         $this->telegramAPI->editMessageText($chatId, (int)$messageId, "میانگین طول چرخه شما: {$length} روز ثبت شد. ✅", null);
+        error_log("UserController::handleSetAverageCycleLength - Calling showMainMenu for user {$telegramId}");
         $this->showMainMenu($chatId, "اطلاعات دوره شما تکمیل شد!");
     }
 
@@ -1172,6 +1178,7 @@ class UserController {
 
         } elseif ($type === 'cycle') {
             $this->telegramAPI->editMessageText($chatId, (int)$messageId, "ثبت میانگین طول چرخه رد شد.", null);
+            error_log("UserController::handleSkipAverageInfo (type cycle) - Calling showMainMenu for user {$telegramId}");
             $this->showMainMenu($chatId, "اطلاعات دوره شما به‌روز شد.");
         }
     }
@@ -1202,8 +1209,8 @@ class UserController {
         $text .= "لطفا یک دسته‌بندی را انتخاب کنید:";
 
         $category_buttons_flat = [];
-        foreach ($this->symptomsConfig['categories'] as $key => $category) {
-            $category_buttons_flat[] = ['text' => $category['name_fa'], 'callback_data' => "symptom_show_cat:{$dateOption}:{$key}"];
+        foreach ($this->symptomsConfig['categories'] as $key => $categoryNameFa) { // Changed: $category to $categoryNameFa
+            $category_buttons_flat[] = ['text' => $categoryNameFa, 'callback_data' => "symptom_show_cat:{$dateOption}:{$key}"];
         }
 
         $groupedCategoryButtons = [];
@@ -1240,20 +1247,23 @@ class UserController {
             $currentLoggedForCat = $userState['data']['symptoms'][$categoryKey];
         }
 
-        if (!isset($this->symptomsConfig['categories'][$categoryKey])) {
+        if (!isset($this->symptomsConfig['categories'][$categoryKey]) || !isset($this->symptomsConfig['symptoms'][$categoryKey])) {
             $this->telegramAPI->sendMessage($chatId, "خطا: دسته‌بندی علائم نامعتبر است.");
             $this->handleLogSymptomStart($telegramId, $chatId, null, $dateOption);
             return;
         }
-        $category = $this->symptomsConfig['categories'][$categoryKey];
-        $text = "علائم دسته‌بندی: *{$category['name_fa']}*\n";
+        $categoryNameFa = $this->symptomsConfig['categories'][$categoryKey];
+        $symptomsInCategory = $this->symptomsConfig['symptoms'][$categoryKey];
+
+        $text = "علائم دسته‌بندی: *{$categoryNameFa}*\n";
         $text .= "برای " . ($dateOption === 'today' ? "امروز" : $dateOption) . ". انتخاب کنید:\n";
 
         $symptomButtons = [];
         $row = [];
-        foreach ($category['items'] as $itemKey => $item) {
+        foreach ($symptomsInCategory as $itemKey => $itemDisplayValue) { // Changed: $item to $itemDisplayValue
             $isChecked = in_array($itemKey, $currentLoggedForCat);
-            $buttonText = ($isChecked ? "✅ " : "◻️ ") . $item['name_fa'];
+            // $itemDisplayValue is already the name_fa string, e.g., 'خوشحال 😊'
+            $buttonText = ($isChecked ? "✅ " : "◻️ ") . $itemDisplayValue;
             $row[] = ['text' => $buttonText, 'callback_data' => "symptom_toggle:{$dateOption}:{$categoryKey}:{$itemKey}"];
             if (count($row) == 2) {
                 $symptomButtons[] = $row;
@@ -1328,11 +1338,11 @@ class UserController {
         $savedCount = 0;
         if (is_array($symptomsToSave)) {
             foreach ($symptomsToSave as $categoryKey => $symptomKeysArray) {
-                if (is_array($symptomKeysArray) && isset($this->symptomsConfig['categories'][$categoryKey])) {
+                if (is_array($symptomKeysArray) && isset($this->symptomsConfig['categories'][$categoryKey]) && isset($this->symptomsConfig['symptoms'][$categoryKey])) {
+                    $categoryName = $this->symptomsConfig['categories'][$categoryKey]; // Direct name_fa
                     foreach ($symptomKeysArray as $symptomKey) {
-                         if(isset($this->symptomsConfig['categories'][$categoryKey]['items'][$symptomKey])) {
-                            $categoryName = $this->symptomsConfig['categories'][$categoryKey]['name_fa'];
-                            $symptomName = $this->symptomsConfig['categories'][$categoryKey]['items'][$symptomKey]['name_fa'];
+                         if(isset($this->symptomsConfig['symptoms'][$categoryKey][$symptomKey])) {
+                            $symptomName = $this->symptomsConfig['symptoms'][$categoryKey][$symptomKey]; // Direct name_fa
 
                             if ($symptomModel->logSymptom(
                                 $userIdDb,
@@ -1678,14 +1688,130 @@ class UserController {
         }
 
         $actionButtons = [];
-        // Simplified keyboard for testing the parse error
-        $actionButtons[] = [['text' => "TEMP: Back to History", 'callback_data' => 'user_show_history_menu']];
-        $actionButtons[] = [['text' => "TEMP: Main Menu", 'callback_data' => 'main_menu_show']];
+        if (!empty($paginationButtonsRow)) {
+            $actionButtons[] = $paginationButtonsRow;
+        }
+        $actionButtons[] = [['text' => "🔙 بازگشت به منوی تاریخچه", 'callback_data' => 'user_show_history_menu']];
+        $actionButtons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
         $keyboard = ['inline_keyboard' => $actionButtons];
 
         if ($messageId) $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
         else $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
     }
     // --- END USER HISTORY SECTION ---
+
+    // --- PERSONALIZATION SETTINGS START ---
+    public function showPersonalizationSettingsMenu(string $telegramId, int $chatId, ?int $messageId = null) {
+        $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        if (!$user) { $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد."); return; }
+
+        $decryptedRole = !empty($user['encrypted_role']) ? EncryptionHelper::decrypt($user['encrypted_role']) : null;
+
+        $text = "🎨 **تنظیمات شخصی‌سازی**\n\nکدام بخش از تنظیمات را می‌خواهید تغییر دهید؟";
+
+        $buttons_flat = [
+            ['text' => "🔔 تنظیمات اعلان‌ها", 'callback_data' => 'user_notification_settings_show'],
+            // ['text' => "📚 تنظیمات محتوای روزانه", 'callback_data' => 'user_content_settings_show'], // For later
+        ];
+
+        if ($decryptedRole === 'menstruating') {
+            // Future: Add sharing preferences if user is menstruating and has a partner
+            // $buttons_flat[] = ['text' => "🤝 تنظیمات اشتراک‌گذاری با همراه", 'callback_data' => 'user_sharing_settings_show'];
+        }
+
+        $grouped_buttons = [];
+        for ($i = 0; $i < count($buttons_flat); $i += 1) { // One button per row for this menu
+            $grouped_buttons[] = [$buttons_flat[$i]];
+        }
+        $grouped_buttons[] = [['text' => "🔙 بازگشت به تنظیمات اصلی", 'callback_data' => 'settings_show']];
+        $grouped_buttons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
+
+        $keyboard = ['inline_keyboard' => $grouped_buttons];
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        }
+    }
+
+    public function showNotificationSettingsMenu(string $telegramId, int $chatId, ?int $messageId = null) {
+        $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        if (!$user) { $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد."); return; }
+
+        $prefs = $this->userPreferencesModel->getPreferences($user['id']);
+        $decryptedRole = !empty($user['encrypted_role']) ? EncryptionHelper::decrypt($user['encrypted_role']) : null;
+
+        $text = "🔔 **تنظیمات اعلان‌ها**\n\nاعلان‌های زیر را فعال یا غیرفعال کنید:\n";
+        $buttons_flat = [];
+
+        $yes = "✅"; $no = "❌";
+
+        // Common notifications for both roles (if applicable to their context)
+        $buttons_flat[] = ['text' => ($prefs['notify_pre_pms'] ? $yes : $no) . " اعلان قبل از PMS", 'callback_data' => 'user_notify_toggle:notify_pre_pms'];
+        $buttons_flat[] = ['text' => ($prefs['notify_period_start'] ? $yes : $no) . " اعلان شروع پریود", 'callback_data' => 'user_notify_toggle:notify_period_start'];
+
+        if ($decryptedRole === 'menstruating') {
+            $buttons_flat[] = ['text' => ($prefs['notify_period_end'] ? $yes : $no) . " اعلان پایان پریود", 'callback_data' => 'user_notify_toggle:notify_period_end'];
+            // Ovulation notification is still tied to users.encrypted_cycle_info -> show_ovulation for now
+            // To add it here, we'd need to migrate that setting or make this button control that JSON field.
+            // For simplicity, keeping it separate for now. User toggles "Show Ovulation" in cycle log prompt.
+
+            $buttons_flat[] = ['text' => ($prefs['notify_daily_educational_self'] ? $yes : $no) . " پیام‌های روزانه خودم", 'callback_data' => 'user_notify_toggle:notify_daily_educational_self'];
+        } elseif ($decryptedRole === 'partner') {
+            $buttons_flat[] = ['text' => ($prefs['notify_daily_educational_partner'] ? $yes : $no) . " پیام‌های روزانه خودم (همراه)", 'callback_data' => 'user_notify_toggle:notify_daily_educational_partner'];
+        }
+
+        // Future: Snooze button
+        // $buttons_flat[] = ['text' => "😴 تعویق همه اعلان‌ها", 'callback_data' => 'user_notify_snooze_prompt'];
+
+        $grouped_buttons = [];
+        foreach($buttons_flat as $button) { $grouped_buttons[] = [$button]; } // One button per row
+
+        $grouped_buttons[] = [['text' => "🔙 بازگشت به شخصی‌سازی", 'callback_data' => 'user_personalization_menu_show']];
+        $keyboard = ['inline_keyboard' => $grouped_buttons];
+
+        if ($messageId) {
+            $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
+        } else {
+            $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
+        }
+    }
+
+    public function handleToggleNotificationPref(string $telegramId, int $chatId, int $messageId, string $prefKey) {
+        $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        if (!$user) {
+            $this->telegramAPI->answerCallbackQuery($this->telegramAPI->getLastCallbackQueryId($chatId), "خطا: کاربر یافت نشد.", true);
+            return;
+        }
+
+        $currentPrefs = $this->userPreferencesModel->getPreferences($user['id']);
+
+        // Ensure the key is valid and boolean-like (0 or 1)
+        $validKeys = ['notify_pre_pms', 'notify_period_start', 'notify_period_end', 'notify_daily_educational_self', 'notify_daily_educational_partner'];
+        if (!in_array($prefKey, $validKeys)) {
+            $this->telegramAPI->answerCallbackQuery($this->telegramAPI->getLastCallbackQueryId($chatId), "خطا: تنظیم نامعتبر.", true);
+            error_log("Invalid notification preference key toggled: {$prefKey} by user {$user['id']}");
+            return;
+        }
+
+        $currentValue = (bool)($currentPrefs[$prefKey] ?? 1); // Default to true if somehow not set
+        $newValue = !$currentValue;
+
+        $updated = $this->userPreferencesModel->updatePreference($user['id'], $prefKey, (int)$newValue);
+
+        if ($updated) {
+            $this->telegramAPI->answerCallbackQuery($this->telegramAPI->getLastCallbackQueryId($chatId), "تنظیمات ذخیره شد.", false);
+        } else {
+            $this->telegramAPI->answerCallbackQuery($this->telegramAPI->getLastCallbackQueryId($chatId), "خطا در ذخیره تنظیمات.", true);
+        }
+        // Refresh the menu
+        $this->showNotificationSettingsMenu($telegramId, $chatId, $messageId);
+    }
+
+    // --- PERSONALIZATION SETTINGS END ---
 }
 ?>

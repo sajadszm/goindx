@@ -128,29 +128,44 @@ class SupportTicketModel {
     }
 
     /**
-     * Lists tickets, optionally filtered by status, ordered by last_message_at descending.
-     * @param string|null $status Filter by status (e.g., 'open', 'admin_reply'). Null for all.
+     * Lists tickets, optionally filtered by status(es), ordered by last_message_at descending.
+     * @param string|array|null $statusFilter Filter by status or array of statuses. Null for all.
      * @param int $limit
      * @param int $offset
      * @return array List of tickets.
      */
-    public function listTickets(?string $status = null, int $limit = 20, int $offset = 0): array {
+    public function listTickets(string|array|null $statusFilter = null, int $limit = 20, int $offset = 0): array {
         $sql = "SELECT st.*, u.encrypted_first_name, u.encrypted_username
                 FROM support_tickets st
                 JOIN users u ON st.user_id = u.id";
         $params = [];
-        if ($status !== null) {
-            $sql .= " WHERE st.status = :status";
-            $params[':status'] = $status;
+
+        if ($statusFilter !== null) {
+            if (is_array($statusFilter)) {
+                if (empty($statusFilter)) {
+                    // Avoids SQL error with empty IN clause, effectively means no status filter if array is empty
+                    // Or, depending on desired logic, could return empty array immediately.
+                    // For now, let's assume an empty array means "no specific status filter" if it gets here.
+                } else {
+                    $placeholders = implode(',', array_fill(0, count($statusFilter), '?'));
+                    $sql .= " WHERE st.status IN ({$placeholders})";
+                    $params = array_merge($params, $statusFilter);
+                }
+            } else { // Single string status
+                $sql .= " WHERE st.status = ?";
+                $params[] = $statusFilter;
+            }
         }
-        $sql .= " ORDER BY st.last_message_at DESC LIMIT :limit OFFSET :offset";
+        $sql .= " ORDER BY st.last_message_at DESC LIMIT ? OFFSET ?";
+        $params[] = $limit;
+        $params[] = $offset;
 
         $stmt = $this->db->prepare($sql);
-        if ($status !== null) {
-            $stmt->bindParam(':status', $params[':status']);
+        // Bind parameters one by one
+        foreach ($params as $key => $value) {
+            // PDO parameters are 1-indexed
+            $stmt->bindValue($key + 1, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
         }
-        $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
         $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -166,20 +181,33 @@ class SupportTicketModel {
     }
 
     /**
-     * Counts tickets, optionally filtered by status.
-     * @param string|null $status Filter by status. Null for all.
+     * Counts tickets, optionally filtered by status(es).
+     * @param string|array|null $statusFilter Filter by status or array of statuses. Null for all.
      * @return int Count of tickets.
      */
-    public function countTickets(?string $status = null): int {
-        $sql = "SELECT COUNT(*) FROM support_tickets";
+    public function countTickets(string|array|null $statusFilter = null): int {
+        $sql = "SELECT COUNT(*) FROM support_tickets st"; // Added alias for clarity if joins were needed
         $params = [];
-        if ($status !== null) {
-            $sql .= " WHERE status = :status";
-            $params[':status'] = $status;
+
+        if ($statusFilter !== null) {
+            if (is_array($statusFilter)) {
+                if (empty($statusFilter)) {
+                    return 0; // No statuses to count, so count is 0
+                }
+                $placeholders = implode(',', array_fill(0, count($statusFilter), '?'));
+                $sql .= " WHERE st.status IN ({$placeholders})";
+                $params = array_merge($params, $statusFilter);
+            } else { // Single string status
+                $sql .= " WHERE st.status = ?";
+                $params[] = $statusFilter;
+            }
         }
+
         $stmt = $this->db->prepare($sql);
-        if ($status !== null) {
-            $stmt->bindParam(':status', $params[':status']);
+        // Bind parameters one by one
+        foreach ($params as $key => $value) {
+            // PDO parameters are 1-indexed
+            $stmt->bindValue($key + 1, $value, PDO::PARAM_STR); // Statuses are strings
         }
         $stmt->execute();
         return (int)$stmt->fetchColumn();

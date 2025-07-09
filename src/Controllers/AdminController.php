@@ -404,6 +404,57 @@ class AdminController {
         $this->telegramAPI->sendMessage($adminChatId, $text, $keyboard, 'Markdown');
     }
 
+    // This method is called by callback 'admin_user_manage_show:USER_DB_ID'
+    public function handleShowUserManagementMenuCallback(string $adminTelegramId, int $adminChatId, ?int $messageId, int $userDbId) {
+        if (!$this->isAdmin($adminTelegramId)) { return; }
+        $this->updateUserState($adminTelegramId, null); // Clear state
+
+        $foundUser = $this->userModel->findUserById($userDbId); // Find by internal DB ID
+
+        if (!$foundUser) {
+            $errorText = "کاربری با شناسه داخلی `{$userDbId}` یافت نشد.";
+            if ($messageId) $this->telegramAPI->editMessageText($adminChatId, $messageId, $errorText, null, "Markdown");
+            else $this->telegramAPI->sendMessage($adminChatId, $errorText, null, "Markdown");
+            $this->promptFindUser($adminTelegramId, $adminChatId, null); // Show prompt again
+            return;
+        }
+
+        // Decrypt user details for display
+        $displayFirstName = "[رمزگشایی ناموفق]";
+        $displayUsername = "[بدون نام کاربری]";
+        $displayRole = "[نامشخص]";
+        try {
+            if (!empty($foundUser['encrypted_first_name'])) $displayFirstName = EncryptionHelper::decrypt($foundUser['encrypted_first_name']);
+            if (!empty($foundUser['encrypted_username'])) $displayUsername = "@" . EncryptionHelper::decrypt($foundUser['encrypted_username']);
+            if (!empty($foundUser['encrypted_role'])) $displayRole = $this->translateRole(EncryptionHelper::decrypt($foundUser['encrypted_role']));
+        } catch (\Exception $e) {
+            error_log("Admin: Error decrypting user details for ID {$foundUser['id']}: " . $e->getMessage());
+        }
+
+        $text = "👤 **مدیریت کاربر: {$displayFirstName}** ({$displayUsername})\n";
+        $text .= "ID داخلی: `{$foundUser['id']}`\n";
+        $text .= "ID تلگرام (هش شده): `{$foundUser['telegram_id_hash']}`\n";
+        $text .= "نقش: {$displayRole}\n";
+        $text .= "وضعیت اشتراک: `{$foundUser['subscription_status']}`\n";
+        if ($foundUser['subscription_status'] === 'active' && !empty($foundUser['subscription_ends_at'])) {
+            $text .= "پایان اشتراک: " . (new \DateTime($foundUser['subscription_ends_at']))->format('Y-m-d H:i:s') . "\n";
+        } elseif ($foundUser['subscription_status'] === 'free_trial' && !empty($foundUser['trial_ends_at'])) {
+            $text .= "پایان دوره رایگان: " . (new \DateTime($foundUser['trial_ends_at']))->format('Y-m-d H:i:s') . "\n";
+        }
+        $text .= "تاریخ عضویت: " . (new \DateTime($foundUser['created_at']))->format('Y-m-d H:i:s') . "\n";
+
+        $buttons = [
+            [['text' => "✏️ ویرایش اشتراک کاربر", 'callback_data' => 'admin_user_edit_sub_prompt:' . $foundUser['id']]],
+            [['text' => "🔙 جستجوی کاربر دیگر", 'callback_data' => 'admin_user_manage_prompt_find']],
+            [['text' => "🏠 بازگشت به پنل ادمین", 'callback_data' => 'admin_show_menu']],
+        ];
+        $keyboard = ['inline_keyboard' => $buttons];
+
+        if ($messageId) $this->telegramAPI->editMessageText($adminChatId, $messageId, $text, $keyboard, 'Markdown');
+        else $this->telegramAPI->sendMessage($adminChatId, $text, $keyboard, 'Markdown');
+    }
+
+
     // Placeholder for translateRole, actual implementation may vary
     private function translateRole($roleKey) {
         $roles = ['menstruating' => 'فرد پریود شونده', 'partner' => 'همراه', 'prefer_not_to_say' => 'ترجیح داده نگوید'];

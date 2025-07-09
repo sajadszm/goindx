@@ -91,54 +91,100 @@ class SymptomModel {
     }
 
     /**
-     * Gets all logged symptoms for a user on a specific date.
-     * Returns an array of ['category_key' => ..., 'symptom_key' => ...] for easier UI mapping.
-     * This requires decrypting and then matching back to keys, which is intensive.
-     * A more performant way might be to store encrypted keys or a non-encrypted mapping if privacy allows.
-     * For now, we decrypt and match.
-     * @return array [[category_key, symptom_key], ...]
+     * Logs a single symptom. Used by UserController's save final.
+     * This version is more aligned with how UserController saves symptoms.
      */
-    public function getLoggedSymptomsForDate(int $userId, string $symptomDate): array {
-        $stmt = $this->db->prepare("SELECT encrypted_symptom_category, encrypted_symptom_name
+    public function logSymptom(int $userId, string $symptomDate, string $encryptedCategoryName, string $encryptedSymptomName): bool {
+        // Check if already exists to prevent duplicates for the same day/symptom
+        // This check might be redundant if deleteSymptomsForDate is called first in a batch operation.
+        $stmt_check = $this->db->prepare("SELECT id FROM logged_symptoms
+                                          WHERE user_id = :user_id AND symptom_date = :symptom_date
+                                          AND encrypted_symptom_category = :cat AND encrypted_symptom_name = :sym");
+        $stmt_check->bindParam(':user_id', $userId, PDO::PARAM_INT);
+        $stmt_check->bindParam(':symptom_date', $symptomDate);
+        $stmt_check->bindParam(':cat', $encryptedCategoryName);
+        $stmt_check->bindParam(':sym', $encryptedSymptomName);
+        $stmt_check->execute();
+        if ($stmt_check->fetch()) {
+            return true; // Already logged
+        }
+
+        $sql = "INSERT INTO logged_symptoms (user_id, symptom_date, encrypted_symptom_category, encrypted_symptom_name)
+                VALUES (:user_id, :symptom_date, :encrypted_category, :encrypted_symptom)";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindParam(':symptom_date', $symptomDate);
+        $stmt->bindParam(':encrypted_category', $encryptedCategoryName);
+        $stmt->bindParam(':encrypted_symptom', $encryptedSymptomName);
+
+        try {
+            return $stmt->execute();
+        } catch (PDOException $e) {
+            error_log("Error logging symptom (v2): " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Deletes all symptoms for a user on a specific date.
+     * Typically used before re-logging a new set of symptoms for that day.
+     */
+    public function deleteSymptomsForDate(int $userId, string $symptomDate): bool {
+        $sql = "DELETE FROM logged_symptoms WHERE user_id = :user_id AND symptom_date = :symptom_date";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindParam(':symptom_date', $symptomDate);
+        try {
+            return $stmt->execute();
+        } catch (PDOException $e) {
+            error_log("Error deleting symptoms for date: " . $e->getMessage());
+            return false;
+        }
+    }
+
+
+    /**
+     * Gets all logged symptoms for a user on a specific date.
+     * This version is for display in history, returns already encrypted data.
+     * @return array Raw rows from DB with encrypted data.
+     */
+    public function getSymptomsForDate(int $userId, string $symptomDate): array {
+        $stmt = $this->db->prepare("SELECT id, encrypted_symptom_category, encrypted_symptom_name
                                     FROM logged_symptoms
                                     WHERE user_id = :user_id AND symptom_date = :symptom_date");
         $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
         $stmt->bindParam(':symptom_date', $symptomDate);
         $stmt->execute();
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
-        $loggedSymptomsKeys = [];
-        foreach ($results as $row) {
-            try {
-                $decryptedCategory = EncryptionHelper::decrypt($row['encrypted_symptom_category']);
-                $decryptedSymptom = EncryptionHelper::decrypt($row['encrypted_symptom_name']);
+    /**
+     * Gets distinct dates for which a user has logged symptoms, for pagination.
+     * @return array List of dates ['logged_date' => YYYY-MM-DD].
+     */
+    public function getDistinctLoggedDates(int $userId, int $limit, int $offset): array {
+        $sql = "SELECT DISTINCT symptom_date AS logged_date
+                FROM logged_symptoms
+                WHERE user_id = :user_id
+                ORDER BY symptom_date DESC
+                LIMIT :limit OFFSET :offset";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
-                $foundCatKey = null;
-                $foundSymKey = null;
-
-                foreach (self::$symptomsConfig['categories'] as $catKey => $catName) {
-                    if ($catName === $decryptedCategory) {
-                        $foundCatKey = $catKey;
-                        break;
-                    }
-                }
-                if ($foundCatKey) {
-                    foreach (self::$symptomsConfig['symptoms'][$foundCatKey] as $symKey => $symName) {
-                        if ($symName === $decryptedSymptom) {
-                            $foundSymKey = $symKey;
-                            break;
-                        }
-                    }
-                }
-                if ($foundCatKey && $foundSymKey) {
-                    $loggedSymptomsKeys[] = ['category_key' => $foundCatKey, 'symptom_key' => $foundSymKey];
-                }
-            } catch (\Exception $e) {
-                error_log("Error decrypting/mapping symptom: " . $e->getMessage());
-                // Skip this symptom if decryption fails
-            }
-        }
-        return $loggedSymptomsKeys;
+    /**
+     * Counts the number of distinct dates for which a user has logged symptoms.
+     */
+    public function countDistinctLoggedDates(int $userId): int {
+        $sql = "SELECT COUNT(DISTINCT symptom_date) FROM logged_symptoms WHERE user_id = :user_id";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindParam(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->execute();
+        return (int)$stmt->fetchColumn();
     }
 
     /**

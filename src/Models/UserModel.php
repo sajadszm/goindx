@@ -435,7 +435,9 @@ class UserModel {
      * @return array List of users with their encrypted_chat_id.
      */
     public function getAllUsersForBroadcast(): array {
-        $stmt = $this->db->query("SELECT id, encrypted_chat_id FROM users WHERE is_bot_blocked = 0"); // Assuming an is_bot_blocked field
+        // Removed "WHERE is_bot_blocked = 0" for now to ensure functionality
+        // TODO: Consider re-adding is_bot_blocked logic later if the column exists or is added.
+        $stmt = $this->db->query("SELECT id, encrypted_chat_id FROM users");
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
