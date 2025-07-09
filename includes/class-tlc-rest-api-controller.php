@@ -257,13 +257,43 @@ class TLC_REST_API_Controller extends WP_REST_Controller {
         if ( $is_field_requested('rating') && isset( $schema['properties']['rating'] ) ) $data['rating'] = $item->rating ? (int) $item->rating : null;
         if ( $is_field_requested('rating_comment') && isset( $schema['properties']['rating_comment'] ) ) $data['rating_comment'] = $item->rating_comment;
 
+        // Add WooCommerce Order Info if applicable
+        if ( $is_field_requested('woo_orders') &&
+             class_exists('WooCommerce') &&
+             get_option(TLC_PLUGIN_PREFIX . 'woo_enable_integration', true) &&
+             get_option(TLC_PLUGIN_PREFIX . 'woo_orders_in_admin_dash', true) &&
+             !empty($item->woo_customer_id) ) {
+
+            $data['woo_orders'] = array();
+            $customer_orders = wc_get_orders(array(
+                'customer_id' => $item->woo_customer_id,
+                'limit'       => 3, // Fetch last 3 orders for admin dashboard display
+                'orderby'     => 'date',
+                'order'       => 'DESC',
+            ));
+            if (!empty($customer_orders)) {
+                foreach ($customer_orders as $order) {
+                    $order_data = $order->get_data();
+                    $data['woo_orders'][] = array(
+                        'id' => $order->get_id(),
+                        'order_number' => $order->get_order_number(),
+                        'status' => wc_get_order_status_name($order->get_status()),
+                        'date_created' => mysql_to_rfc3339($order_data['date_created']->date('Y-m-d H:i:s')),
+                        'total' => $order->get_formatted_order_total(),
+                        'currency' => $order->get_currency(),
+                        'item_count' => $order->get_item_count(),
+                        'view_url' => admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' )
+                    );
+                }
+            }
+        }
 
         $context = ! empty( $request['context'] ) ? $request['context'] : 'view';
         // $data = $this->add_additional_fields_to_object( $data, $request ); // Not using additional fields yet
         $data = $this->filter_response_by_context( $data, $context );
 
         $response = rest_ensure_response( $data );
-        if ( $is_field_requested('_links') ) { // Only add links if requested or if no specific fields are requested
+        if ( $is_field_requested('_links') || empty($fields) ) {
              $response->add_links( $this->prepare_links( $item ) );
         }
         return $response;
@@ -316,6 +346,24 @@ class TLC_REST_API_Controller extends WP_REST_Controller {
                 'utm_campaign' => array( 'description' => __( 'UTM campaign parameter.', 'telegram-live-chat' ), 'type' => array('string', 'null'), 'context' => array( 'view' ), ),
                 'rating' => array( 'description' => __( 'Visitor rating for the session (1-5).', 'telegram-live-chat' ), 'type' => array('integer', 'null'), 'context' => array( 'view', 'embed' ), ),
                 'rating_comment' => array( 'description' => __( 'Visitor comment for the rating.', 'telegram-live-chat' ), 'type' => array('string', 'null'), 'context' => array( 'view' ), ),
+                'woo_orders' => array(
+                    'description' => __('Recent WooCommerce orders for the customer.', 'telegram-live-chat'),
+                    'type' => 'array',
+                    'context' => array('view'), // Only available in view context typically
+                    'items' => array(
+                        'type' => 'object',
+                        'properties' => array(
+                            'id' => array('type' => 'integer'),
+                            'order_number' => array('type' => 'string'),
+                            'status' => array('type' => 'string'),
+                            'date_created' => array('type' => 'string', 'format' => 'date-time'),
+                            'total' => array('type' => 'string'),
+                            'currency' => array('type' => 'string'),
+                            'item_count' => array('type' => 'integer'),
+                            'view_url' => array('type' => 'string', 'format' => 'uri'),
+                        ),
+                    ),
+                ),
             ),
         );
         return $this->schema;

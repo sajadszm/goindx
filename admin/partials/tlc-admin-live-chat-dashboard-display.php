@@ -16,15 +16,27 @@
         <div id="tlc-chat-area-panel" class="tlc-chat-area-panel">
             <div id="tlc-chat-area-header" class="tlc-panel-header">
                 <h2 id="tlc-current-chat-visitor-name"><?php esc_html_e( 'Select a chat', 'telegram-live-chat' ); ?></h2>
-                <!-- Display other info like session ID, status -->
+                <div id="tlc-current-chat-session-id" style="font-size:0.8em; color:#555;"></div>
             </div>
             <div id="tlc-admin-chat-messages" class="tlc-admin-chat-messages">
-                <!-- Messages for the selected chat will appear here -->
                 <p class="tlc-no-chat-selected"><?php esc_html_e( 'Select a chat from the list to view messages.', 'telegram-live-chat' ); ?></p>
             </div>
-            <div id="tlc-admin-reply-area" class="tlc-admin-reply-area" style="display: none;"> <!-- Hidden until a chat is selected -->
+            <div id="tlc-admin-reply-area" class="tlc-admin-reply-area" style="display: none;">
                 <textarea id="tlc-admin-reply-textarea" placeholder="<?php esc_attr_e( 'Type your reply...', 'telegram-live-chat' ); ?>"></textarea>
                 <button id="tlc-admin-send-reply-button" class="button button-primary"><?php esc_html_e( 'Send Reply', 'telegram-live-chat' ); ?></button>
+            </div>
+        </div>
+        <div id="tlc-visitor-info-panel" class="tlc-visitor-info-panel">
+            <div class="tlc-panel-header">
+                <h2><?php esc_html_e( 'Visitor Info', 'telegram-live-chat' ); ?></h2>
+            </div>
+            <div id="tlc-visitor-details-content" class="tlc-visitor-details-content">
+                <p><?php esc_html_e('Select a chat to see details.', 'telegram-live-chat'); ?></p>
+            </div>
+            <div id="tlc-woo-orders-content" class="tlc-woo-orders-content" style="display:none;">
+                <h3><?php esc_html_e('Recent Orders', 'telegram-live-chat'); ?></h3>
+                <ul id="tlc-woo-orders-list"></ul>
+            </div>
                 <!-- Add canned response button/dropdown later -->
             </div>
         </div>
@@ -142,5 +154,37 @@
         color: #777;
         margin-top: 50px;
         font-size: 1.1em;
+    }
+    .tlc-visitor-info-panel {
+        width: 280px; /* Adjust as needed */
+        border-left: 1px solid #ccd0d4;
+        display: flex;
+        flex-direction: column;
+        background-color: #f9f9f9;
+    }
+    .tlc-visitor-details-content, .tlc-woo-orders-content {
+        padding: 15px;
+        overflow-y: auto;
+        font-size: 0.9em;
+    }
+    .tlc-woo-orders-content h3 {
+        margin-top: 0;
+        font-size: 1.1em;
+    }
+    .tlc-woo-orders-list {
+        list-style: none;
+        padding-left: 0;
+        margin:0;
+    }
+    .tlc-woo-orders-list li {
+        padding: 5px 0;
+        border-bottom: 1px dotted #eee;
+    }
+    .tlc-woo-orders-list li:last-child {
+        border-bottom: none;
+    }
+    .tlc-woo-orders-list strong {
+        display: inline-block;
+        min-width: 80px;
     }
 </style>

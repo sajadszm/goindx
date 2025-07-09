@@ -113,6 +113,50 @@
         <?php endif; ?>
     </table>
 
+    <?php
+    // Display WooCommerce Orders if integration is enabled and customer ID exists
+    if ( class_exists( 'WooCommerce' ) &&
+         get_option(TLC_PLUGIN_PREFIX . 'woo_enable_integration', true) && // Check main enable toggle
+         !empty($session->woo_customer_id) ) :
+
+        $customer_orders = wc_get_orders(array(
+            'customer_id' => $session->woo_customer_id,
+            'limit'       => 5, // Show up to 5 recent orders in history view
+            'orderby'     => 'date',
+            'order'       => 'DESC',
+        ));
+    ?>
+        <?php if ( !empty($customer_orders) ) : ?>
+            <h3><?php esc_html_e( 'Recent WooCommerce Orders', 'telegram-live-chat' ); ?></h3>
+            <table class="widefat striped tlc-woo-orders-history-table">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'Order #', 'telegram-live-chat' ); ?></th>
+                        <th><?php esc_html_e( 'Date', 'telegram-live-chat' ); ?></th>
+                        <th><?php esc_html_e( 'Status', 'telegram-live-chat' ); ?></th>
+                        <th><?php esc_html_e( 'Items', 'telegram-live-chat' ); ?></th>
+                        <th><?php esc_html_e( 'Total', 'telegram-live-chat' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $customer_orders as $order ) :
+                        $order_data = $order->get_data();
+                    ?>
+                    <tr>
+                        <td><a href="<?php echo esc_url( admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' ) ); ?>" target="_blank">#<?php echo esc_html( $order->get_order_number() ); ?></a></td>
+                        <td><?php echo esc_html( wp_date( get_option('date_format'), $order_data['date_created']->getTimestamp() ) ); ?></td>
+                        <td><?php echo esc_html( wc_get_order_status_name($order->get_status()) ); ?></td>
+                        <td><?php echo esc_html( $order->get_item_count() ); ?></td>
+                        <td><?php echo wp_kses_post( $order->get_formatted_order_total() ); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php else: ?>
+             <p><em><?php esc_html_e( 'No WooCommerce orders found for this customer.', 'telegram-live-chat' ); ?></em></p>
+        <?php endif; ?>
+    <?php endif; // End WooCommerce check ?>
+
     <h3><?php esc_html_e( 'Messages', 'telegram-live-chat' ); ?></h3>
     <div class="tlc-admin-messages-container" style="max-height: 500px; overflow-y: auto; border: 1px solid #ccd0d4; padding: 10px; background: #f6f7f7;">
         <?php if ( $messages ) : ?>

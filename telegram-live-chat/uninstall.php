@@ -101,6 +101,12 @@ if ( $remove_data ) {
     delete_option('tlc_consent_localstorage_key');
     delete_option('tlc_consent_localstorage_value');
 
+    // WooCommerce Integration Options
+    delete_option('tlc_woo_enable_integration');
+    delete_option('tlc_woo_orders_in_telegram');
+    delete_option('tlc_woo_orders_in_telegram_count');
+    delete_option('tlc_woo_orders_in_admin_dash');
+
     delete_option('tlc_enable_cleanup_on_uninstall'); // Also delete the option itself
 
     // Remove custom database tables

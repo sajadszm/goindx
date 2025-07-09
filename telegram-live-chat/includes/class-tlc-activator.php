@@ -91,8 +91,10 @@ class TLC_Activator {
             visitor_email VARCHAR(255) NULL,
             rating TINYINT NULL,
             rating_comment TEXT NULL,
+            woo_customer_id BIGINT UNSIGNED NULL,
             PRIMARY KEY  (session_id),
             UNIQUE KEY visitor_token (visitor_token),
+            KEY woo_customer_id (woo_customer_id),
             KEY wp_user_id (wp_user_id),
             KEY status (status)
         ) $charset_collate;";
@@ -201,6 +203,12 @@ class TLC_Activator {
             TLC_PLUGIN_PREFIX . 'require_consent_for_chat' => false,
             TLC_PLUGIN_PREFIX . 'consent_localstorage_key' => 'user_cookie_consent',
             TLC_PLUGIN_PREFIX . 'consent_localstorage_value' => 'granted',
+
+            // WooCommerce Integration Defaults
+            TLC_PLUGIN_PREFIX . 'woo_enable_integration' => true, // Default to true if WC is active, but setting a value anyway
+            TLC_PLUGIN_PREFIX . 'woo_orders_in_telegram' => true,
+            TLC_PLUGIN_PREFIX . 'woo_orders_in_telegram_count' => 1,
+            TLC_PLUGIN_PREFIX . 'woo_orders_in_admin_dash' => true,
 
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
             // Add more default options here as needed

@@ -7,6 +7,9 @@ jQuery(document).ready(function($) {
     const $adminReplyArea = $('#tlc-admin-reply-area');
     const $adminReplyTextarea = $('#tlc-admin-reply-textarea');
     const $noChatSelectedMsg = $('.tlc-no-chat-selected');
+    const $visitorDetailsContent = $('#tlc-visitor-details-content');
+    const $wooOrdersContent = $('#tlc-woo-orders-content');
+    const $wooOrdersList = $('#tlc-woo-orders-list');
 
     let currentSessionId = null;
     let lastMessageIdReceived = 0;
@@ -59,8 +62,13 @@ jQuery(document).ready(function($) {
         $adminChatMessages.empty();
         $noChatSelectedMsg.hide();
         $chatAreaHeaderName.text(tlc_admin_chat_vars.i18n.chatWith + ' ' + visitorName);
+        $('#tlc-current-chat-session-id').text('Session ID: ' + sessionId);
         $adminReplyArea.show();
         $adminReplyTextarea.focus();
+        $visitorDetailsContent.html('<p>Loading details...</p>'); // Clear previous details
+        $wooOrdersContent.hide();
+        $wooOrdersList.empty();
+
 
         // Highlight active session
         $sessionListItems.find('.tlc-session-item').removeClass('active');
@@ -70,11 +78,64 @@ jQuery(document).ready(function($) {
             clearInterval(messagePollingInterval);
         }
 
-        fetchMessagesForSession(sessionId, true); // Initial fetch
+        // Fetch full session details for the info panel
+        $.ajax({
+            url: tlc_admin_chat_vars.rest_url + 'tlc/v1/sessions/' + sessionId,
+            method: 'GET',
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader('X-WP-Nonce', tlc_admin_chat_vars.api_nonce);
+            },
+            success: function(session) {
+                populateVisitorInfoPanel(session);
+            },
+            error: function() {
+                $visitorDetailsContent.html('<p style="color:red;">Error loading session details.</p>');
+            }
+        });
+
+
+        fetchMessagesForSession(sessionId, true); // Initial fetch for messages
 
         messagePollingInterval = setInterval(function() {
             fetchMessagesForSession(sessionId, false);
         }, POLLING_INTERVAL_MS);
+    }
+
+    function populateVisitorInfoPanel(session) {
+        let detailsHtml = '<ul>';
+        detailsHtml += '<li><strong>Token:</strong> ' + escapeHtml(session.visitor_token) + '</li>';
+        if(session.visitor_name) detailsHtml += '<li><strong>Name:</strong> ' + escapeHtml(session.visitor_name) + '</li>';
+        if(session.visitor_email) detailsHtml += '<li><strong>Email:</strong> ' + escapeHtml(session.visitor_email) + '</li>';
+        if(session.wp_user_id) detailsHtml += '<li><strong>WP User ID:</strong> ' + escapeHtml(session.wp_user_id) + '</li>'; // Could link to user profile
+        if(session.visitor_ip) detailsHtml += '<li><strong>IP:</strong> ' + escapeHtml(session.visitor_ip) + '</li>';
+        if(session.initial_page_url) detailsHtml += '<li><strong>Started on:</strong> <a href="' + escapeHtml(session.initial_page_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(session.initial_page_url.substring(0,30)) + '...</a></li>';
+        if(session.referer) detailsHtml += '<li><strong>Referer:</strong> <a href="' + escapeHtml(session.referer) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(session.referer.substring(0,30)) + '...</a></li>';
+        if(session.utm_source) detailsHtml += '<li><strong>UTM Source:</strong> ' + escapeHtml(session.utm_source) + '</li>';
+        if(session.utm_medium) detailsHtml += '<li><strong>UTM Medium:</strong> ' + escapeHtml(session.utm_medium) + '</li>';
+        if(session.utm_campaign) detailsHtml += '<li><strong>UTM Campaign:</strong> ' + escapeHtml(session.utm_campaign) + '</li>';
+        if(session.rating) {
+            let stars = '';
+            for(let i=0; i<5; i++) { stars += (i < session.rating) ? '&#9733;' : '&#9734;'; }
+            detailsHtml += '<li><strong>Rating:</strong> ' + stars + '</li>';
+            if(session.rating_comment) detailsHtml += '<li><strong>Comment:</strong> ' + escapeHtml(session.rating_comment) + '</li>';
+        }
+        detailsHtml += '</ul>';
+        $visitorDetailsContent.html(detailsHtml);
+
+        if (session.woo_orders && session.woo_orders.length > 0) {
+            let ordersHtml = '';
+            session.woo_orders.forEach(function(order){
+                ordersHtml += '<li>';
+                ordersHtml += '<a href="' + escapeHtml(order.view_url) + '" target="_blank"><strong>#' + escapeHtml(order.order_number) + '</strong></a> - ' + escapeHtml(order.status);
+                ordersHtml += '<br><small>' + escapeHtml(order.date_created.substring(0,10)) + ' | ' + escapeHtml(order.item_count) + ' items | ' + escapeHtml(order.total) + '</small>';
+                ordersHtml += '</li>';
+            });
+            $wooOrdersList.html(ordersHtml);
+            $wooOrdersContent.show();
+        } else {
+            $wooOrdersContent.hide();
+            $wooOrdersList.empty();
+        }
     }
 
     function fetchMessagesForSession(sessionId, isInitialLoad) {
