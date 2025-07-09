@@ -84,7 +84,7 @@ class CycleService {
      * Phases: 'menstruation', 'follicular', 'ovulation', 'luteal', 'unknown'.
      * @return string
      */
-    public functiongetCurrentCyclePhase(): string {
+    public function getCurrentCyclePhase(): string {
         $currentCycleDay = $this->getCurrentCycleDay();
         if ($currentCycleDay === null) {
             return 'unknown';

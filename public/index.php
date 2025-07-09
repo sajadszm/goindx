@@ -86,12 +86,12 @@ try {
                 $userModel->updateUser($hashedTelegramId, ['user_state' => null]);
                 $telegramAPI->sendMessage($chatId, "عملیات لغو شد.");
                 // Determine where to go back based on state if needed
-                if (strpos((string)$stateAction, 'admin_') === 0 && $userId === ADMIN_TELEGRAM_ID) {
+                if (is_string($stateAction) && strpos($stateAction, 'admin_') === 0 && $userId === ADMIN_TELEGRAM_ID) {
                      $adminController->showAdminMenu($userId, $chatId, null);
                 } else {
                     $userController->showMainMenu($chatId);
                 }
-            } elseif ($text === '/cancel_admin_action' && strpos((string)$stateAction, 'admin_') === 0 && $userId === ADMIN_TELEGRAM_ID) {
+            } elseif ($text === '/cancel_admin_action' && is_string($stateAction) && strpos($stateAction, 'admin_') === 0 && $userId === ADMIN_TELEGRAM_ID) {
                  $userModel->updateUser($hashedTelegramId, ['user_state' => null]);
                  $telegramAPI->sendMessage($chatId, "عملیات ادمین لغو شد.");
                  $adminController->showAdminMenu($userId, $chatId, null);
@@ -99,7 +99,7 @@ try {
                 $supportController->handleUserMessage($userId, $chatId, $text, $firstName, $username);
             } elseif ($stateAction === 'admin_awaiting_plan_add' && $userId === ADMIN_TELEGRAM_ID) {
                 $adminController->handleAddSubscriptionPlanDetails($userId, $chatId, $text);
-            } elseif ((strpos($stateAction, 'admin_add_content') === 0 || strpos($stateAction, 'admin_edit_content') === 0) && $userId === ADMIN_TELEGRAM_ID && is_array($stateData)) {
+            } elseif (is_string($stateAction) && (strpos($stateAction, 'admin_add_content') === 0 || strpos($stateAction, 'admin_edit_content') === 0) && $userId === ADMIN_TELEGRAM_ID && is_array($stateData)) {
                 $adminController->handleAdminConversation($userId, $chatId, $text, $stateData);
             } elseif ($stateAction === 'admin_awaiting_ticket_id_for_view' && $userId === ADMIN_TELEGRAM_ID) {
                 if (ctype_digit($text)) {
