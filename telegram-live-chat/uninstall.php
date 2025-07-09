@@ -81,6 +81,12 @@ if ( $remove_data ) {
     // Canned Responses Option
     delete_option('tlc_canned_responses');
 
+    // Pre-chat Form Option
+    delete_option('tlc_enable_pre_chat_form');
+
+    // Satisfaction Rating Option
+    delete_option('tlc_enable_satisfaction_rating');
+
     delete_option('tlc_enable_cleanup_on_uninstall'); // Also delete the option itself
 
     // Remove custom database tables

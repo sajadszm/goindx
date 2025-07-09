@@ -113,6 +113,15 @@ class TLC_Admin {
             $this->plugin_name . '-chat-history',           // Menu slug
             array( $this, 'display_chat_history_page' )     // Function to display the page
         );
+
+        add_submenu_page(
+            $this->plugin_name,                             // Parent slug
+            __( 'Chat Analytics', 'telegram-live-chat' ),   // Page title
+            __( 'Chat Analytics', 'telegram-live-chat' ),   // Menu title
+            'manage_options',                               // Capability
+            $this->plugin_name . '-chat-analytics',         // Menu slug
+            array( $this, 'display_chat_analytics_page' )   // Function to display the page
+        );
     }
 
     /**
@@ -310,6 +319,18 @@ class TLC_Admin {
             array('option_name' => TLC_PLUGIN_PREFIX . 'widget_custom_css', 'default' => '', 'rows' => 5, 'description' => __('Add your own CSS rules for the chat widget. Use with caution.', 'telegram-live-chat'))
         );
 
+        // Pre-chat Form Setting
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'enable_pre_chat_form', array($this, 'sanitize_checkbox'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'enable_pre_chat_form', __('Enable Pre-chat Form', 'telegram-live-chat'), array($this, 'render_checkbox_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'widget_customization_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'enable_pre_chat_form', 'label_for_field' => __('Ask for visitor name and email before starting the chat.', 'telegram-live-chat'), 'description' => __('If enabled, visitors will be prompted for their name (required) and email (optional).', 'telegram-live-chat'))
+        );
+
+        // Satisfaction Rating Setting
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating', array($this, 'sanitize_checkbox'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating', __('Enable Satisfaction Rating', 'telegram-live-chat'), array($this, 'render_checkbox_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'widget_customization_section', // Add to customization section
+            array('option_name' => TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating', 'label_for_field' => __('Allow visitors to rate the chat session.', 'telegram-live-chat'), 'description' => __('If enabled, an "End Chat" button will appear, allowing users to rate their experience.', 'telegram-live-chat'))
+        );
+
         // Section for Automated Messages
         add_settings_section(
             TLC_PLUGIN_PREFIX . 'auto_messages_section',
@@ -491,6 +512,28 @@ class TLC_Admin {
             $this->plugin_name,
             TLC_PLUGIN_PREFIX . 'general_settings_section'
         );
+    }
+
+    /**
+     * Display the chat analytics page.
+     *
+     * @since    0.5.0
+     */
+    public function display_chat_analytics_page() {
+        global $wpdb;
+        $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
+        $messages_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
+
+        $total_chats = $wpdb->get_var("SELECT COUNT(*) FROM $sessions_table");
+        $total_messages = $wpdb->get_var("SELECT COUNT(*) FROM $messages_table");
+
+        // Placeholder for average rating (will be implemented in next step)
+        $average_rating_query = "SELECT AVG(rating) FROM $sessions_table WHERE rating IS NOT NULL AND rating > 0";
+        $average_rating = $wpdb->get_var($average_rating_query);
+
+
+        // Pass data to the view
+        include_once( 'partials/tlc-admin-analytics-display.php' );
     }
 
     /**
@@ -715,7 +758,7 @@ class TLC_Admin {
     public function render_text_input_field( $args ) {
         $option_name = $args['option_name'];
         $default_value = $args['default'];
-        $type = isset($args['type']) && $args['type'] === 'textarea' ? 'textarea' : 'text';
+        $type = isset($args['type']) && $args['type'] === 'textarea' ? 'textarea' : (isset($args['type']) ? $args['type'] : 'text');
         $value = get_option( $option_name, $default_value );
 
         if ($type === 'textarea') {
@@ -727,9 +770,10 @@ class TLC_Admin {
                 esc_attr( $rows ),
                 esc_textarea( $value )
             );
-        } else {
+        } else { // Handles text, number, etc.
             printf(
-                '<input type="text" id="%s" name="%s" value="%s" class="regular-text" />',
+                '<input type="%s" id="%s" name="%s" value="%s" class="regular-text" />',
+                esc_attr($type),
                 esc_attr( $option_name ),
                 esc_attr( $option_name ),
                 esc_attr( $value )
@@ -819,15 +863,9 @@ class TLC_Admin {
     }
 
     public function sanitize_custom_css( $input ) {
-        // Sanitize CSS input, allowing valid CSS but preventing XSS.
-        // WordPress's `wp_strip_all_tags` might be too aggressive.
-        // `safecss_filter_attr` is for inline styles.
-        // For a block of CSS, we should allow valid CSS properties and selectors.
-        // A more robust solution might involve a CSS parser/validator.
-        // For now, just ensure it's valid UTF-8 and strip dangerous tags if any somehow got in.
         $input = wp_check_invalid_utf8( $input );
-        $input = wp_strip_all_tags( $input ); // This will remove style tags too, which is fine.
-        return $input; // Consider using wp_kses_post or a custom kses for CSS if more control is needed.
+        $input = wp_strip_all_tags( $input );
+        return $input;
     }
 
     /**
@@ -837,11 +875,6 @@ class TLC_Admin {
         echo '<p>' . __( 'Configure a message to be automatically sent to visitors based on certain triggers. For now, one automated message can be configured.', 'telegram-live-chat' ) . '</p>';
     }
 
-    // We already have sanitize_text_field and sanitize_checkbox.
-    // WordPress core `sanitize_textarea_field` can be used directly or wrapped.
-    // For consistency, if we used array($this, 'sanitize_textarea_field') in register_setting, we'd need it here.
-    // The plan was: 'sanitize_callback' => 'sanitize_textarea_field'. This implies it's a method of $this.
-    // So, let's add a wrapper for it.
     public function sanitize_textarea_field( $input ) {
         return sanitize_textarea_field( $input );
     }
@@ -875,7 +908,7 @@ class TLC_Admin {
         if ( empty( $timezone_string ) ) {
             $offset  = get_option( 'gmt_offset' );
             $timezone_string = sprintf('UTC%+d', $offset);
-            if ($offset > 0 && floor($offset) != $offset) { // Check for .5 offsets
+            if ($offset > 0 && floor($offset) != $offset) {
                  $timezone_string = sprintf('UTC%+0.1f', $offset);
             }
         }
@@ -892,7 +925,7 @@ class TLC_Admin {
         $option_name_base = TLC_PLUGIN_PREFIX . 'work_hours';
         $work_hours = get_option( $option_name_base, array() );
 
-        $is_open    = isset( $work_hours[$day_key]['is_open'] ) ? $work_hours[$day_key]['is_open'] : '0'; // Default to closed
+        $is_open    = isset( $work_hours[$day_key]['is_open'] ) ? $work_hours[$day_key]['is_open'] : '0';
         $open_time  = isset( $work_hours[$day_key]['open'] ) ? $work_hours[$day_key]['open'] : '09:00';
         $close_time = isset( $work_hours[$day_key]['close'] ) ? $work_hours[$day_key]['close'] : '17:00';
 
@@ -916,7 +949,7 @@ class TLC_Admin {
     private function generate_time_select( $name, $current_value ) {
         $html = "<select name='" . esc_attr( $name ) . "'>";
         for ( $h = 0; $h < 24; $h++ ) {
-            for ( $m = 0; $m < 60; $m += 15 ) { // 15-minute intervals
+            for ( $m = 0; $m < 60; $m += 15 ) {
                 $time_val = sprintf( '%02d:%02d', $h, $m );
                 $html .= "<option value='" . esc_attr( $time_val ) . "' " . selected( $current_value, $time_val, false ) . ">" . esc_html( $time_val ) . "</option>";
             }
@@ -933,14 +966,14 @@ class TLC_Admin {
     public function sanitize_work_hours( $input ) {
         $sanitized_hours = array();
         $days = array('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday');
-        $time_regex = '/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/'; // HH:MM format
+        $time_regex = '/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/';
 
         foreach ($days as $day) {
             if (isset($input[$day])) {
                 $sanitized_hours[$day]['is_open'] = isset($input[$day]['is_open']) ? '1' : '0';
                 $sanitized_hours[$day]['open'] = (isset($input[$day]['open']) && preg_match($time_regex, $input[$day]['open'])) ? $input[$day]['open'] : '09:00';
                 $sanitized_hours[$day]['close'] = (isset($input[$day]['close']) && preg_match($time_regex, $input[$day]['close'])) ? $input[$day]['close'] : '17:00';
-            } else { // Ensure all days are present with defaults if not submitted (e.g. all checkboxes off)
+            } else {
                  $sanitized_hours[$day]['is_open'] = '0';
                  $sanitized_hours[$day]['open'] = '09:00';
                  $sanitized_hours[$day]['close'] = '17:00';
@@ -973,13 +1006,12 @@ class TLC_Admin {
      */
     public function sanitize_allowed_file_types( $input ) {
         if (empty($input)) {
-            return ''; // Allow all if empty
+            return '';
         }
         $types = explode( ',', $input );
         $sanitized_types = array();
         foreach ( $types as $type ) {
             $trimmed_type = trim( strtolower( $type ) );
-            // Remove leading dots if any, and keep alphanumeric
             $sanitized_type = preg_replace( '/[^a-z0-9]/', '', $trimmed_type );
             if ( !empty($sanitized_type) ) {
                 $sanitized_types[] = $sanitized_type;
@@ -1008,7 +1040,7 @@ class TLC_Admin {
     public function render_canned_responses_field() {
         $option_name = TLC_PLUGIN_PREFIX . 'canned_responses';
         $responses = get_option( $option_name, array() );
-        if (empty($responses)) { // Ensure there's at least one empty row for the template if none exist
+        if (empty($responses)) {
             $responses[] = array('shortcut' => '', 'message' => '');
         }
         ?>
@@ -1072,7 +1104,6 @@ class TLC_Admin {
                 }
             }
         }
-        // Limit to max 10 for now
         return array_slice($sanitized_responses, 0, 10);
     }
 
@@ -1084,9 +1115,6 @@ class TLC_Admin {
      * @param string $hook_suffix The current admin page.
      */
     public function enqueue_admin_settings_scripts( $hook_suffix ) {
-        // Only load on our plugin's main settings page.
-        // The hook for the main page is 'toplevel_page_{menu_slug}'
-        // $this->plugin_name is 'telegram-live-chat' (which is the menu_slug for the main page)
         if ( 'toplevel_page_' . $this->plugin_name !== $hook_suffix ) {
             return;
         }
@@ -1100,7 +1128,6 @@ class TLC_Admin {
             true
         );
 
-        // For Canned Responses Repeater
         wp_enqueue_script(
             $this->plugin_name . '-admin-canned-responses',
             plugin_dir_url( __FILE__ ) . 'js/tlc-admin-canned-responses.js',
@@ -1110,9 +1137,11 @@ class TLC_Admin {
         );
         wp_localize_script(
             $this->plugin_name . '-admin-canned-responses',
-            'tlc_plugin_prefix', // Will be available as tlc_plugin_prefix in JS
+            'tlc_plugin_prefix',
             TLC_PLUGIN_PREFIX
         );
 
     }
 }
+
+[end of telegram-live-chat/admin/class-tlc-admin.php]

@@ -48,6 +48,14 @@ class TLC_Activator {
             visitor_ip VARCHAR(45) NULL,
             visitor_user_agent TEXT NULL,
             initial_page_url TEXT NULL,
+            referer TEXT NULL,
+            utm_source VARCHAR(255) NULL,
+            utm_medium VARCHAR(255) NULL,
+            utm_campaign VARCHAR(255) NULL,
+            visitor_name VARCHAR(255) NULL,
+            visitor_email VARCHAR(255) NULL,
+            rating TINYINT NULL,
+            rating_comment TEXT NULL,
             PRIMARY KEY  (session_id),
             UNIQUE KEY visitor_token (visitor_token),
             KEY wp_user_id (wp_user_id),
@@ -65,6 +73,7 @@ class TLC_Activator {
             timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             telegram_message_id BIGINT NULL,
             is_read BOOLEAN NOT NULL DEFAULT 0,
+            page_url TEXT NULL,
             PRIMARY KEY  (message_id),
             KEY session_id (session_id),
             KEY sender_type (sender_type),
@@ -135,6 +144,12 @@ class TLC_Activator {
 
             // Canned Responses Default
             TLC_PLUGIN_PREFIX . 'canned_responses' => array(),
+
+            // Pre-chat Form Default
+            TLC_PLUGIN_PREFIX . 'enable_pre_chat_form' => false,
+
+            // Satisfaction Rating Default
+            TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating' => false, // Disabled by default
 
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
             // Add more default options here as needed

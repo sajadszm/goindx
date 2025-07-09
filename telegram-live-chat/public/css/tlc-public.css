@@ -220,3 +220,96 @@
         display: none !important;
     }
 }
+
+/* Pre-chat Form Styles */
+.tlc-pre-chat-form {
+    border-bottom: 1px solid #eee;
+}
+.tlc-pre-chat-form p {
+    margin: 0 0 10px 0;
+}
+.tlc-pre-chat-form label {
+    display: block;
+    margin-bottom: 3px;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+.tlc-pre-chat-form input[type="text"],
+.tlc-pre-chat-form input[type="email"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+.tlc-pre-chat-form button {
+    background-color: var(--tlc-header-bg-color);
+    color: var(--tlc-header-text-color);
+    border: none;
+    border-radius: 4px;
+    padding: 10px 15px;
+    cursor: pointer;
+    font-weight: bold;
+    width: 100%;
+}
+.tlc-pre-chat-form button:hover {
+    opacity: 0.9;
+}
+
+/* Header buttons common style */
+.tlc-header-button {
+    background: none;
+    border: none;
+    color: var(--tlc-header-text-color);
+    font-size: 20px;
+    cursor: pointer;
+    opacity: 0.8;
+    padding: 5px;
+    margin-left: 5px;
+}
+.tlc-header-button:hover {
+    opacity: 1;
+}
+
+/* Rating Form Styles */
+.tlc-rating-form {
+    border-bottom: 1px solid #eee;
+}
+.tlc-rating-form h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+.tlc-rating-stars .tlc-star {
+    font-size: 24px;
+    cursor: pointer;
+    color: #ccc; /* Default empty star color */
+    margin: 0 2px;
+}
+.tlc-rating-stars .tlc-star.rated,
+.tlc-rating-stars .tlc-star:hover,
+.tlc-rating-stars .tlc-star.hovered {
+    color: #ffc107; /* Filled star color (gold) */
+}
+.tlc-rating-form textarea {
+     width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 60px;
+}
+.tlc-rating-form button {
+    background-color: var(--tlc-header-bg-color);
+    color: var(--tlc-header-text-color);
+    border: none;
+    border-radius: 4px;
+    padding: 10px 15px;
+    cursor: pointer;
+    font-weight: bold;
+    width: auto; /* Auto width for submit button */
+}
+.tlc-rating-form button:hover {
+    opacity: 0.9;
+}

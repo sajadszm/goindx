@@ -108,6 +108,9 @@ class TLC_Public {
                     'max_size_mb'   => absint(get_option(TLC_PLUGIN_PREFIX . 'file_uploads_max_size_mb', 2)),
                     'upload_nonce'  => wp_create_nonce('tlc_upload_chat_file_nonce')
                 ),
+                'pre_chat_form_enabled' => get_option(TLC_PLUGIN_PREFIX . 'enable_pre_chat_form', false),
+                'satisfaction_rating_enabled' => get_option(TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating', false),
+                'submit_rating_nonce' => wp_create_nonce('tlc_submit_chat_rating_nonce'),
             )
         );
     }
@@ -296,14 +299,44 @@ class TLC_Public {
             <div class="tlc-chat-widget">
                 <div class="tlc-chat-header">
                     <span class="tlc-chat-header-title"><?php echo esc_html($header_title); ?></span>
-                    <button class="tlc-chat-header-close" aria-label="<?php esc_attr_e('Close Chat', 'telegram-live-chat'); ?>">&times;</button>
+                    <div>
+                        <?php if (get_option(TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating', false)): ?>
+                            <button type="button" id="tlc-end-chat-button" class="tlc-header-button" title="<?php esc_attr_e('End Chat & Rate', 'telegram-live-chat'); ?>">&#10006;</button> <!-- Check mark or similar, using X for now -->
+                        <?php endif; ?>
+                        <button class="tlc-chat-header-close tlc-header-button" aria-label="<?php esc_attr_e('Close Chat', 'telegram-live-chat'); ?>">&times;</button>
+                    </div>
                 </div>
-                <div class="tlc-chat-messages">
-                    <?php if (!empty($initial_message_text)): ?>
-                        <div class="tlc-message system"><?php echo nl2br(esc_html($initial_message_text)); ?></div>
-                    <?php endif; ?>
+
+                <div id="tlc-rating-form" class="tlc-rating-form" style="display: none; padding: 15px; text-align: center;">
+                    <h4><?php esc_html_e('Rate your chat experience:', 'telegram-live-chat'); ?></h4>
+                    <div class="tlc-rating-stars">
+                        <?php for ($i = 1; $i <= 5; $i++) : ?>
+                            <span class="tlc-star" data-value="<?php echo $i; ?>">&#9734;</span> <!-- Empty Star -->
+                        <?php endfor; ?>
+                    </div>
+                    <textarea id="tlc-rating-comment" rows="3" placeholder="<?php esc_attr_e('Optional comments...', 'telegram-live-chat'); ?>" style="width: 100%; margin-top: 10px;"></textarea>
+                    <button type="button" id="tlc-submit-rating-button" style="margin-top: 10px;"><?php esc_html_e('Submit Rating', 'telegram-live-chat'); ?></button>
+                    <div id="tlc-rating-thankyou" style="display:none; margin-top:10px; color: green;"><?php esc_html_e('Thank you for your feedback!', 'telegram-live-chat'); ?></div>
+                    <div id="tlc-rating-error" style="color: red; margin-top: 5px;"></div>
                 </div>
-                <div class="tlc-chat-input-area">
+
+
+                <div id="tlc-pre-chat-form" class="tlc-pre-chat-form" style="display: none; padding: 15px;">
+                    <p><label for="tlc-visitor-name"><?php esc_html_e('Name *', 'telegram-live-chat'); ?></label>
+                    <input type="text" id="tlc-visitor-name" name="tlc_visitor_name" required /></p>
+                    <p><label for="tlc-visitor-email"><?php esc_html_e('Email', 'telegram-live-chat'); ?></label>
+                    <input type="email" id="tlc-visitor-email" name="tlc_visitor_email" /></p>
+                    <button type="button" id="tlc-start-chat-button"><?php esc_html_e('Start Chat', 'telegram-live-chat'); ?></button>
+                    <div id="tlc-pre-chat-error" style="color: red; margin-top: 5px;"></div>
+                </div>
+
+                <div class="tlc-chat-content"> <!-- Wrapper for messages and input -->
+                    <div class="tlc-chat-messages">
+                        <?php if (!empty($initial_message_text)): ?>
+                            <div class="tlc-message system"><?php echo nl2br(esc_html($initial_message_text)); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="tlc-chat-input-area">
                     <?php if (get_option(TLC_PLUGIN_PREFIX . 'file_uploads_enable', false)): ?>
                     <button type="button" id="tlc-file-upload-button" class="tlc-icon-button" aria-label="<?php esc_attr_e('Upload file', 'telegram-live-chat'); ?>">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20px" height="20px"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v11.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
@@ -312,7 +345,8 @@ class TLC_Public {
                     <?php endif; ?>
                     <textarea id="tlc-chat-message-input" placeholder="<?php esc_attr_e('Type your message...', 'telegram-live-chat'); ?>" aria-label="<?php esc_attr_e('Chat message input', 'telegram-live-chat'); ?>"></textarea>
                     <button id="tlc-send-message-button" type="button"><?php esc_html_e('Send', 'telegram-live-chat'); ?></button>
-                </div>
+                    </div> <!-- End tlc-chat-input-area -->
+                </div> <!-- End tlc-chat-content -->
             </div>
         </div>
         <?php

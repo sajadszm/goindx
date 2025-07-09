@@ -38,6 +38,9 @@ class TLC_Sessions_List_Table extends WP_List_Table {
             'visitor_token'      => __( 'Visitor Token', 'telegram-live-chat' ),
             'wp_user_id'         => __( 'WP User', 'telegram-live-chat' ),
             'status'             => __( 'Status', 'telegram-live-chat' ),
+            'visitor_name'       => __( 'Visitor Name', 'telegram-live-chat' ),
+            'visitor_email'      => __( 'Visitor Email', 'telegram-live-chat' ),
+            'rating'             => __( 'Rating', 'telegram-live-chat' ),
             'start_time'         => __( 'Start Time', 'telegram-live-chat' ),
             'last_active_time'   => __( 'Last Active', 'telegram-live-chat' ),
             'visitor_ip'         => __( 'Visitor IP', 'telegram-live-chat' ),
@@ -56,6 +59,9 @@ class TLC_Sessions_List_Table extends WP_List_Table {
             'session_id'       => array( 'session_id', false ),
             'wp_user_id'       => array( 'wp_user_id', false ),
             'status'           => array( 'status', false ),
+            'visitor_name'     => array( 'visitor_name', false ),
+            'visitor_email'    => array( 'visitor_email', false ), // Could be problematic if many are empty
+            'rating'           => array( 'rating', false ),
             'start_time'       => array( 'start_time', false ),
             'last_active_time' => array( 'last_active_time', false ),
             'visitor_ip'       => array( 'visitor_ip', false ),
@@ -72,22 +78,47 @@ class TLC_Sessions_List_Table extends WP_List_Table {
         $table_name = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
         $per_page     = $this->get_items_per_page( 'tlc_sessions_per_page', 20 );
         $current_page = $this->get_pagenum();
-        $total_items  = $wpdb->get_var( "SELECT COUNT(session_id) FROM $table_name" );
 
         $this->_column_headers = array( $this->get_columns(), array(), $this->get_sortable_columns() );
+
+        $sql_select = "SELECT *";
+        $sql_from = "FROM $table_name";
+        $sql_where = "";
+        $params = array();
+
+        // Search
+        if ( ! empty( $_REQUEST['s'] ) ) {
+            $search_term = sanitize_text_field( $_REQUEST['s'] );
+            $sql_where .= " WHERE (visitor_token LIKE %s OR visitor_name LIKE %s OR visitor_email LIKE %s OR visitor_ip LIKE %s)";
+            $like_term = '%' . $wpdb->esc_like( $search_term ) . '%';
+            $params[] = $like_term;
+            $params[] = $like_term;
+            $params[] = $like_term;
+            $params[] = $like_term;
+        }
+
+        // Count total items (with search)
+        $total_items_sql = "SELECT COUNT(session_id) $sql_from $sql_where";
+        if (!empty($params)) {
+            $total_items = $wpdb->get_var( $wpdb->prepare( $total_items_sql, $params ) );
+        } else {
+            $total_items = $wpdb->get_var( $total_items_sql );
+        }
+
 
         $orderby = ( ! empty( $_REQUEST['orderby'] ) && array_key_exists( $_REQUEST['orderby'], $this->get_sortable_columns() ) ) ? $_REQUEST['orderby'] : 'session_id';
         $order   = ( ! empty( $_REQUEST['order'] ) && in_array( strtolower( $_REQUEST['order'] ), array( 'asc', 'desc' ) ) ) ? $_REQUEST['order'] : 'desc';
 
         $offset = ( $current_page - 1 ) * $per_page;
 
-        $this->items = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT * FROM $table_name ORDER BY $orderby $order LIMIT %d OFFSET %d",
-                $per_page,
-                $offset
-            ), ARRAY_A
-        );
+        $sql_limit_offset = $wpdb->prepare("LIMIT %d OFFSET %d", $per_page, $offset);
+
+        $query = "$sql_select $sql_from $sql_where ORDER BY $orderby $order $sql_limit_offset";
+        if (!empty($params)) {
+            $this->items = $wpdb->get_results( $wpdb->prepare( $query, $params ), ARRAY_A );
+        } else {
+            $this->items = $wpdb->get_results( $query, ARRAY_A );
+        }
 
         $this->set_pagination_args( array(
             'total_items' => $total_items,
@@ -109,10 +140,14 @@ class TLC_Sessions_List_Table extends WP_List_Table {
             case 'session_id':
             case 'visitor_token':
             case 'status':
+            case 'visitor_name':
+            case 'visitor_email':
             case 'start_time':
             case 'last_active_time':
             case 'visitor_ip':
-                return esc_html( $item[ $column_name ] );
+                return esc_html( $item[ $column_name ] ? $item[ $column_name ] : '-' );
+            case 'rating':
+                return $item[ $column_name ] ? str_repeat( '&#9733;', absint($item[ $column_name ]) ) . str_repeat( '&#9734;', 5 - absint($item[ $column_name ]) ) : '-'; // Display stars
             case 'wp_user_id':
                 if ( ! empty( $item[ $column_name ] ) ) {
                     $user = get_userdata( $item[ $column_name ] );

@@ -204,6 +204,10 @@ class TLC_Plugin {
         // AJAX handler for file uploads
         $this->loader->add_action( 'wp_ajax_tlc_upload_chat_file', $this, 'handle_upload_chat_file' );
         $this->loader->add_action( 'wp_ajax_nopriv_tlc_upload_chat_file', $this, 'handle_upload_chat_file' );
+
+        // AJAX handler for submitting chat rating
+        $this->loader->add_action( 'wp_ajax_tlc_submit_chat_rating', $this, 'handle_submit_chat_rating' );
+        $this->loader->add_action( 'wp_ajax_nopriv_tlc_submit_chat_rating', $this, 'handle_submit_chat_rating' );
     }
 
     /**
@@ -510,37 +514,32 @@ class TLC_Plugin {
         if ( get_option( TLC_PLUGIN_PREFIX . 'rate_limit_enable', true ) ) {
             $threshold = (int) get_option( TLC_PLUGIN_PREFIX . 'rate_limit_threshold', 5 );
             $period_seconds = (int) get_option( TLC_PLUGIN_PREFIX . 'rate_limit_period_seconds', 10 );
-            // Ensure period is at least 1 to prevent division by zero or overly aggressive limiting
             $period_seconds = max(1, $period_seconds);
-            $transient_key = TLC_PLUGIN_PREFIX . 'rl_' . substr(md5($visitor_token), 0, 16); // Shorten key, md5 for consistency
+            $transient_key = TLC_PLUGIN_PREFIX . 'rl_' . substr(md5($visitor_token), 0, 16);
 
             $timestamps = get_transient( $transient_key );
-            if ( false === $timestamps || !is_array($timestamps) ) { // Ensure it's an array
+            if ( false === $timestamps || !is_array($timestamps) ) {
                 $timestamps = array();
             }
 
             $current_time = time();
-            // Filter out timestamps older than the period
             $timestamps = array_filter( $timestamps, function( $ts ) use ( $current_time, $period_seconds ) {
                 return is_numeric($ts) && ( $current_time - $ts ) < $period_seconds;
             });
 
             if ( count( $timestamps ) >= $threshold ) {
-                // Limit exceeded
-                wp_send_json_error( array( 'message' => __( 'You are sending messages too quickly. Please wait a moment.', 'telegram-live-chat' ) ), 429 ); // 429 Too Many Requests
+                wp_send_json_error( array( 'message' => __( 'You are sending messages too quickly. Please wait a moment.', 'telegram-live-chat' ) ), 429 );
                 return;
             }
-
-            // Add current message timestamp and save
             $timestamps[] = $current_time;
-            set_transient( $transient_key, $timestamps, $period_seconds + 5 ); // Expire transient slightly after period
+            set_transient( $transient_key, $timestamps, $period_seconds + 5 );
         }
 
         // Sanitize other inputs
         $message_text = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
-        $current_page = isset( $_POST['current_page'] ) ? esc_url_raw( $_POST['current_page'] ) : '';
+        $current_page_url = isset( $_POST['current_page'] ) ? esc_url_raw( $_POST['current_page'] ) : '';
 
-        if ( empty( $message_text ) ) { // visitor_token already checked
+        if ( empty( $message_text ) ) {
             wp_send_json_error( array( 'message' => __( 'Message text cannot be empty.', 'telegram-live-chat' ) ), 400 );
             return;
         }
@@ -548,15 +547,19 @@ class TLC_Plugin {
         $visitor_ip = $this->get_visitor_ip();
         $visitor_user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ) : '';
         $wp_user_id = get_current_user_id();
+        $visitor_name_from_post = isset($_POST['visitor_name']) ? sanitize_text_field(wp_unslash($_POST['visitor_name'])) : null;
+        $visitor_email_from_post = isset($_POST['visitor_email']) ? sanitize_email(wp_unslash($_POST['visitor_email'])) : null;
+
 
         $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
         $messages_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
 
         $session = $wpdb->get_row( $wpdb->prepare(
-            "SELECT session_id, status FROM $sessions_table WHERE visitor_token = %s",
+            "SELECT session_id, status, referer FROM $sessions_table WHERE visitor_token = %s", // Also get referer to avoid overwriting
             $visitor_token
         ) );
         $session_id = null;
+        $new_session_data = array();
 
         if ( $session ) {
             $session_id = $session->session_id;
@@ -564,15 +567,46 @@ class TLC_Plugin {
             if ($session->status === 'closed' || $session->status === 'archived') {
                 $update_data['status'] = 'active';
             }
+            // Only update referer and UTMs if they are not already set for this session
+            if (empty($session->referer) && isset($_SERVER['HTTP_REFERER'])) {
+                 $update_data['referer'] = esc_url_raw($_SERVER['HTTP_REFERER']);
+            }
+            // UTMs are typically for the first touch, so only set if not already there for the session.
+            // This logic might be better if UTMs are tracked per session start, not per message.
+            // For now, if new session, we add. If existing, we don't overwrite.
+            // Update visitor name and email if provided and not already set or different.
+            if ($visitor_name_from_post && (empty($session->visitor_name) || $session->visitor_name !== $visitor_name_from_post)) {
+                $update_data['visitor_name'] = $visitor_name_from_post;
+            }
+            if ($visitor_email_from_post && (empty($session->visitor_email) || $session->visitor_email !== $visitor_email_from_post)) {
+                $update_data['visitor_email'] = $visitor_email_from_post;
+            }
             $wpdb->update( $sessions_table, $update_data, array( 'session_id' => $session_id ) );
+
         } else {
-            $insert_data = array(
-                'visitor_token' => $visitor_token, 'wp_user_id' => $wp_user_id > 0 ? $wp_user_id : null,
-                'start_time' => current_time( 'mysql' ), 'last_active_time' => current_time( 'mysql' ),
-                'status' => 'active', 'visitor_ip' => $visitor_ip,
-                'visitor_user_agent' => $visitor_user_agent, 'initial_page_url' => $current_page,
+            $new_session_data = array(
+                'visitor_token' => $visitor_token,
+                'wp_user_id' => $wp_user_id > 0 ? $wp_user_id : null,
+                'start_time' => current_time( 'mysql' ),
+                'last_active_time' => current_time( 'mysql' ),
+                'status' => 'active',
+                'visitor_ip' => $visitor_ip,
+                'visitor_user_agent' => $visitor_user_agent,
+                'initial_page_url' => $current_page_url,
+                'referer' => isset($_SERVER['HTTP_REFERER']) ? esc_url_raw($_SERVER['HTTP_REFERER']) : null,
+                'visitor_name' => $visitor_name_from_post, // Add to new session
+                'visitor_email' => $visitor_email_from_post, // Add to new session
             );
-            $wpdb->insert( $sessions_table, $insert_data );
+            $parsed_url_query = array();
+            $query_str = parse_url($current_page_url, PHP_URL_QUERY);
+            if ($query_str) {
+                parse_str($query_str, $parsed_url_query);
+            }
+            $new_session_data['utm_source'] = isset($parsed_url_query['utm_source']) ? sanitize_text_field($parsed_url_query['utm_source']) : null;
+            $new_session_data['utm_medium'] = isset($parsed_url_query['utm_medium']) ? sanitize_text_field($parsed_url_query['utm_medium']) : null;
+            $new_session_data['utm_campaign'] = isset($parsed_url_query['utm_campaign']) ? sanitize_text_field($parsed_url_query['utm_campaign']) : null;
+
+            $wpdb->insert( $sessions_table, $new_session_data );
             $session_id = $wpdb->insert_id;
         }
 
@@ -582,8 +616,11 @@ class TLC_Plugin {
         }
 
         $message_inserted = $wpdb->insert( $messages_table, array(
-            'session_id' => $session_id, 'sender_type' => 'visitor',
-            'message_content' => $message_text, 'timestamp' => current_time( 'mysql' ),
+            'session_id' => $session_id,
+            'sender_type' => 'visitor',
+            'message_content' => $message_text,
+            'timestamp' => current_time( 'mysql' ),
+            'page_url' => $current_page_url, // Store current page with message
         ));
 
         if ( ! $message_inserted ) {
@@ -603,23 +640,50 @@ class TLC_Plugin {
 
         $telegram_api = new TLC_Telegram_Bot_API( $bot_token );
         $admin_user_ids = array_map( 'trim', explode( ',', $admin_user_ids_str ) );
-        $telegram_message = sprintf(
+
+        $telegram_message_content = sprintf(
             __( "New chat message from visitor (Session: %s):\nPage: %s\n\n%s", 'telegram-live-chat' ),
-            $session_id, $current_page, $message_text
+            $session_id, $current_page_url, $message_text
         );
         $visitor_details = "\n\nVisitor Info:\nIP: " . $visitor_ip;
+        if ($visitor_name_from_post) {
+            $visitor_details .= "\nName: " . esc_html($visitor_name_from_post);
+        }
+        if ($visitor_email_from_post) {
+            $visitor_details .= "\nEmail: " . esc_html($visitor_email_from_post);
+        }
         if ($wp_user_id > 0) {
             $user_info = get_userdata($wp_user_id);
             if ($user_info) {
-                $visitor_details .= "\nUser: " . $user_info->display_name . " (" . $user_info->user_email . ")";
+                $visitor_details .= "\nUser: " . esc_html($user_info->display_name) . " (" . esc_html($user_info->user_email) . ")";
             }
         }
-        $telegram_message .= $visitor_details;
+        // Add Referer and UTM if it's a new session (or if we decide to send it always)
+        // $new_session_data might not be set if session existed. Fetch from DB for consistent info.
+        $session_info_for_telegram = $wpdb->get_row($wpdb->prepare("SELECT referer, utm_source, utm_medium, utm_campaign FROM $sessions_table WHERE session_id = %d", $session_id));
+
+        if ($session_info_for_telegram) {
+            if (!empty($session_info_for_telegram->referer)) {
+                 $visitor_details .= "\nReferer: " . esc_html($session_info_for_telegram->referer);
+            }
+            if (!empty($session_info_for_telegram->utm_source)) {
+                 $visitor_details .= "\nUTM Source: " . esc_html($session_info_for_telegram->utm_source);
+            }
+            if (!empty($session_info_for_telegram->utm_medium)) {
+                 $visitor_details .= "\nUTM Medium: " . esc_html($session_info_for_telegram->utm_medium);
+            }
+            if (!empty($session_info_for_telegram->utm_campaign)) {
+                 $visitor_details .= "\nUTM Campaign: " . esc_html($session_info_for_telegram->utm_campaign);
+            }
+        }
+
+
+        $telegram_message_content .= $visitor_details;
 
         $success_sending_to_all_admins = true;
         foreach ( $admin_user_ids as $admin_user_id ) {
             if ( ! is_numeric( $admin_user_id ) ) continue;
-            $response = $telegram_api->send_message( $admin_user_id, $telegram_message, 'HTML' );
+            $response = $telegram_api->send_message( $admin_user_id, $telegram_message_content, 'HTML' );
             if ( is_wp_error( $response ) ) {
                 error_log( TLC_PLUGIN_PREFIX . 'Failed to send message to Telegram User ID ' . $admin_user_id . ': ' . $response->get_error_message() );
                 $success_sending_to_all_admins = false;
@@ -694,7 +758,7 @@ class TLC_Plugin {
 
         $file = $_FILES['chat_file'];
         $visitor_token = isset( $_POST['visitor_token'] ) ? sanitize_text_field( $_POST['visitor_token'] ) : '';
-        $current_page = isset( $_POST['current_page'] ) ? esc_url_raw( $_POST['current_page'] ) : '';
+        $current_page = isset( $_POST['current_page'] ) ? esc_url_raw( $_POST['current_page'] ) : ''; // current_page_url from file upload
 
         if ( empty( $visitor_token ) ) {
             wp_send_json_error( array( 'message' => __( 'Visitor token required.', 'telegram-live-chat' ) ), 400 );
@@ -766,7 +830,7 @@ class TLC_Plugin {
                  $visitor_ip = $this->get_visitor_ip();
                  $visitor_user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ) : '';
                  $wp_user_id = get_current_user_id();
-                 $wpdb->insert( $sessions_table, array(
+                 $wpdb->insert( $sessions_table, array( // This is for file upload, initial_page_url should be $current_page from AJAX
                     'visitor_token' => $visitor_token, 'wp_user_id' => $wp_user_id > 0 ? $wp_user_id : null,
                     'start_time' => current_time( 'mysql' ), 'last_active_time' => current_time( 'mysql' ),
                     'status' => 'active', 'visitor_ip' => $visitor_ip,
@@ -789,6 +853,7 @@ class TLC_Plugin {
                 'session_id' => $session_id, 'sender_type' => 'visitor',
                 'message_content' => $message_content,
                 'timestamp' => current_time( 'mysql' ),
+                'page_url' => $current_page, // Store current page with file message too
             ));
             $db_message_id = $wpdb->insert_id;
 
@@ -828,6 +893,61 @@ class TLC_Plugin {
         }
         die();
     }
+
+    /**
+     * Handles AJAX request to submit chat rating.
+     * @since 0.5.0
+     */
+    public function handle_submit_chat_rating() {
+        global $wpdb;
+
+        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( $_POST['nonce'] ), 'tlc_submit_chat_rating_nonce' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Nonce verification failed.', 'telegram-live-chat' ) ), 403 );
+            return;
+        }
+
+        $visitor_token = isset( $_POST['visitor_token'] ) ? sanitize_text_field( $_POST['visitor_token'] ) : '';
+        $rating = isset( $_POST['rating'] ) ? absint( $_POST['rating'] ) : 0;
+        $comment = isset( $_POST['comment'] ) ? sanitize_textarea_field( wp_unslash( $_POST['comment'] ) ) : '';
+
+        if ( empty( $visitor_token ) ) {
+            wp_send_json_error( array( 'message' => __( 'Visitor token required.', 'telegram-live-chat' ) ), 400 );
+            return;
+        }
+        if ( $rating < 1 || $rating > 5 ) {
+            wp_send_json_error( array( 'message' => __( 'Invalid rating value.', 'telegram-live-chat' ) ), 400 );
+            return;
+        }
+
+        $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
+        $session = $wpdb->get_row( $wpdb->prepare( "SELECT session_id FROM $sessions_table WHERE visitor_token = %s ORDER BY session_id DESC LIMIT 1", $visitor_token ) );
+
+        if ( ! $session ) {
+            wp_send_json_error( array( 'message' => __( 'No active session found for this visitor to rate.', 'telegram-live-chat' ) ), 404 );
+            return;
+        }
+
+        // Update the session with rating and comment
+        $updated = $wpdb->update(
+            $sessions_table,
+            array(
+                'rating' => $rating,
+                'rating_comment' => $comment,
+                // Optionally, update status to 'rated' or 'closed_rated'
+                // 'status' => 'closed_rated'
+            ),
+            array( 'session_id' => $session->session_id ),
+            array( '%d', '%s' ), // data formats
+            array( '%d' )        // where formats
+        );
+
+        if ( false === $updated ) {
+            wp_send_json_error( array( 'message' => __( 'Could not save rating. Database error.', 'telegram-live-chat' ) ), 500 );
+            return;
+        }
+
+        wp_send_json_success( array( 'message' => __( 'Rating submitted successfully.', 'telegram-live-chat' ) ) );
+    }
 }
 
 if (!function_exists('tlc_is_numeric_or_at_sign_string')) {
@@ -835,3 +955,5 @@ if (!function_exists('tlc_is_numeric_or_at_sign_string')) {
         return is_numeric($value) || (is_string($value) && strpos($value, '@') === 0);
     }
 }
+
+[end of telegram-live-chat/includes/class-tlc-plugin.php]
