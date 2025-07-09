@@ -90,7 +90,6 @@ class TLC_Public {
             true // Load in footer
         );
 
-        // Localize script for AJAX and nonce
         wp_localize_script(
             $this->plugin_name . '-widget',
             'tlc_public_ajax',
@@ -115,63 +114,13 @@ class TLC_Public {
         );
     }
 
-    /**
-     * Helper function to gather work hours info for JS.
-     * @return array
-     */
     private function get_work_hours_info_for_js() {
-        // The main plugin class instance is needed to call is_currently_within_work_hours
-        // This is problematic if TLC_Public is instantiated before TLC_Plugin fully.
-        // For now, assume TLC_Plugin methods can be accessed or make it static, or pass instance.
-        // A simpler way is to re-instantiate TLC_Plugin or make `is_currently_within_work_hours` static or a global helper.
-        // Let's assume we can get an instance or use a global function if available.
-        // For now, let's directly call it if this class has access or make it static.
-        // Making `is_currently_within_work_hours` static in `TLC_Plugin` is cleaner.
-        // Let's assume it is made static for this call:
-        // $is_online = TLC_Plugin::is_currently_within_work_hours();
-        // However, TLC_Plugin is not typically used for static methods like that in this pattern.
-        // Let's just instantiate it here.
-        $main_plugin_instance = null;
-        if (function_exists('run_telegram_live_chat')) { // This is a global function from main plugin file
-            // This is not ideal. Better to pass $main_plugin_instance to TLC_Public constructor.
-            // Or, have a global accessor for the main plugin instance.
-            // For now, this is a shortcut:
-            // global $tlc_plugin_instance; // if we set this global in telegram-live-chat.php
-            // $is_online = $tlc_plugin_instance ? $tlc_plugin_instance->is_currently_within_work_hours() : true;
-
-            // Let's try to get it via a new static accessor if we were to refactor TLC_Plugin
-            // For this iteration, let's assume $this->plugin_name gives access to the main class if needed, or pass it.
-            // The function `run_telegram_live_chat()` creates `$plugin = new TLC_Plugin(); $plugin->run();`
-            // We can't easily access that $plugin instance here without architectural changes.
-
-            // Simplest immediate solution: Re-create a TLC_Plugin object to call the method. Not efficient.
-            // $temp_plugin_instance = new TLC_Plugin();
-            // $is_online = $temp_plugin_instance->is_currently_within_work_hours();
-
-            // The most direct way without major refactor is to duplicate the logic or make the helper truly global.
-            // Let's assume `is_currently_within_work_hours` is moved to a more accessible helper class or made static.
-            // For the purpose of this step, let's assume the check happens and we get the boolean.
-            // This part needs a proper way to access the main plugin's method.
-            // For now, I will call it as if it's accessible. This will be fixed if it causes an error.
-            // This implies `is_currently_within_work_hours` should be part of `TLC_Public` or `TLC_Plugin` should be passed.
-            // Let's assume it's moved or made static for now.
-            // For the purpose of this step, let's just call it on $this, assuming it will be added to TLC_Public
-            // or that $this->plugin_name can somehow resolve to the main plugin instance.
-            // This is a known point of friction in this common WordPress plugin pattern.
-
-            // Let's call the main plugin method directly. This requires an instance.
-            // The existing `define_public_hooks` in `TLC_Plugin` does:
-            // $plugin_public = new TLC_Public( $this->get_plugin_name(), $this->get_version() );
-            // We need to pass $this (the TLC_Plugin instance) to TLC_Public constructor.
-
-            // TEMPORARY: For now, let's assume true, will refine access to the method.
+        $is_online = true;
+        if ($this->plugin && method_exists($this->plugin, 'is_currently_within_work_hours')) {
             $is_online = $this->plugin->is_currently_within_work_hours();
         } else {
-            // Fallback or error if $this->plugin is not available (should not happen with constructor change)
-            $is_online = true;
-            error_log(TLC_PLUGIN_PREFIX . "Warning: Main plugin instance not available in TLC_Public for work hours check.");
+            error_log(TLC_PLUGIN_PREFIX . "Warning: Main plugin instance or work hours check method not available in TLC_Public.");
         }
-
         return array(
             'is_online' => $is_online,
             'offline_behavior' => get_option(TLC_PLUGIN_PREFIX . 'offline_behavior', 'show_offline_message'),
@@ -179,10 +128,6 @@ class TLC_Public {
         );
     }
 
-    /**
-     * Helper function to gather auto message settings for JS localization.
-     * @return array
-     */
     private function get_auto_message_settings_for_js() {
         $prefix = TLC_PLUGIN_PREFIX . 'auto_msg_1_';
         $settings = array(
@@ -193,37 +138,57 @@ class TLC_Public {
             'page_targeting' => get_option( $prefix . 'page_targeting', 'all_pages' ),
             'specific_urls'  => get_option( $prefix . 'specific_urls', '' ),
         );
-
-        // Normalize specific_urls into an array
         if (!empty($settings['specific_urls'])) {
-            $urls = preg_split( '/[\s,]+/', $settings['specific_urls'] ); // Split by space or comma
+            $urls = preg_split( '/[\s,]+/', $settings['specific_urls'] );
             $settings['specific_urls_array'] = array_map( 'trim', array_filter( $urls ) );
         } else {
             $settings['specific_urls_array'] = array();
         }
-
-        // For now, we only have one auto message. If we had more, this function would loop or fetch an array of settings.
-        return $settings; // In future, this could be an array of such setting objects
+        return $settings;
     }
 
     /**
-     * Add the chat widget HTML to the site's footer.
-     *
-     * @since 0.1.0
+     * Renders the chat widget HTML. Can be called by footer hook or shortcode.
+     * @param bool $is_shortcode True if called by shortcode, false otherwise.
      */
-    public function add_chat_widget_html() {
-        // Basic check: only show if bot token is configured.
+    public function add_chat_widget_html( $is_shortcode = false ) {
         $bot_token = get_option( TLC_PLUGIN_PREFIX . 'bot_token' );
         if ( empty( $bot_token ) ) {
             return;
         }
 
-        // Work hours check
+        $display_mode = get_option(TLC_PLUGIN_PREFIX . 'widget_display_mode', 'floating');
+
+        // Per-page/post disable check (only for floating mode initiated by footer hook)
+        if ($display_mode === 'floating' && !$is_shortcode) {
+            if (is_singular()) {
+                $post_id = get_the_ID();
+                if ($post_id) {
+                    $disable_widget_on_page = get_post_meta($post_id, '_' . TLC_PLUGIN_PREFIX . 'disable_widget', true);
+                    if ($disable_widget_on_page === '1') {
+                        return; // Don't render floating widget on this specific page/post
+                    }
+                }
+            }
+        }
+
         $is_online = $this->plugin->is_currently_within_work_hours();
         $offline_behavior = get_option(TLC_PLUGIN_PREFIX . 'offline_behavior', 'show_offline_message');
 
+        // If shortcode mode is selected, and this is NOT a shortcode call (i.e., it's the footer hook), don't render.
+        if ($display_mode === 'shortcode' && !$is_shortcode) {
+            return;
+        }
+
         if (!$is_online && $offline_behavior === 'hide_widget') {
-            return; // Hide widget completely if offline and behavior is set to hide
+            // If called via shortcode, we might want to output nothing or a placeholder.
+            // For now, if hidden, shortcode also outputs nothing.
+            // This check should also consider the per-page disable for floating mode.
+            // However, the per-page disable for floating mode already returned above.
+            // If it's a shortcode, it will always render if this point is reached, regardless of work hours hiding.
+            if (!$is_shortcode) { // Only apply hide_widget behavior to floating widget
+                 return;
+            }
         }
 
         // Get customization options
@@ -235,14 +200,12 @@ class TLC_Public {
         $visitor_msg_text = get_option(TLC_PLUGIN_PREFIX . 'visitor_msg_text_color', '#000000');
         $agent_msg_bg = get_option(TLC_PLUGIN_PREFIX . 'agent_msg_bg_color', '#e0e0e0');
         $agent_msg_text = get_option(TLC_PLUGIN_PREFIX . 'agent_msg_text_color', '#000000');
-
         $header_title = get_option(TLC_PLUGIN_PREFIX . 'widget_header_title', __('Live Chat', 'telegram-live-chat'));
 
         $initial_message_text = '';
         if (!$is_online && $offline_behavior === 'show_offline_message') {
             $initial_message_text = get_option(TLC_PLUGIN_PREFIX . 'widget_offline_message', __("We're currently offline. Please leave a message!", 'telegram-live-chat'));
         } else {
-            // If online, or if offline but behavior is not 'show_offline_message' (though 'hide_widget' is handled above)
             $initial_message_text = get_option(TLC_PLUGIN_PREFIX . 'widget_welcome_message', __('Welcome! How can we help you today?', 'telegram-live-chat'));
         }
 
@@ -253,24 +216,23 @@ class TLC_Public {
         $custom_css = get_option(TLC_PLUGIN_PREFIX . 'widget_custom_css', '');
 
         $widget_classes = ['tlc-widget-container'];
-        if ($position === 'bottom_left') {
-            $widget_classes[] = 'tlc-widget-position-bottom-left';
-        } else {
-            $widget_classes[] = 'tlc-widget-position-bottom-right'; // Default
-        }
-        if ($icon_shape === 'square') {
-            $widget_classes[] = 'tlc-widget-shape-square';
-        } else {
-            $widget_classes[] = 'tlc-widget-shape-circle'; // Default
-        }
-        if ($hide_desktop) {
-            $widget_classes[] = 'tlc-hide-on-desktop';
-        }
-        if ($hide_mobile) {
-            $widget_classes[] = 'tlc-hide-on-mobile';
+        // Add position class only if it's NOT a shortcode (shortcode implies static positioning by theme)
+        if (!$is_shortcode && $display_mode === 'floating') {
+            if ($position === 'bottom_left') {
+                $widget_classes[] = 'tlc-widget-position-bottom-left';
+            } else {
+                $widget_classes[] = 'tlc-widget-position-bottom-right';
+            }
+        } else if ($is_shortcode) {
+            $widget_classes[] = 'tlc-widget-embedded'; // Class for embedded widget
         }
 
-        // Prepare inline styles
+
+        if ($icon_shape === 'square') { $widget_classes[] = 'tlc-widget-shape-square'; }
+        else { $widget_classes[] = 'tlc-widget-shape-circle'; }
+        if ($hide_desktop) { $widget_classes[] = 'tlc-hide-on-desktop'; }
+        if ($hide_mobile) { $widget_classes[] = 'tlc-hide-on-mobile'; }
+
         $inline_styles = "<style type='text/css'>
             :root {
                 --tlc-header-bg-color: " . esc_attr($header_bg_color) . ";
@@ -283,27 +245,28 @@ class TLC_Public {
                 --tlc-agent-msg-text: " . esc_attr($agent_msg_text) . ";
             }
         ";
-        if (!empty($custom_css)) {
-            $inline_styles .= "\n" . wp_strip_all_tags( $custom_css ); // Already sanitized on save, but strip tags just in case.
-        }
+        if (!empty($custom_css)) { $inline_styles .= "\n" . wp_strip_all_tags( $custom_css ); }
         $inline_styles .= "</style>";
-
-        echo $inline_styles; // Output the dynamic styles
+        echo $inline_styles;
         ?>
         <div class="<?php echo esc_attr(implode(' ', $widget_classes)); ?>">
+            <?php if (!$is_shortcode && $display_mode === 'floating'): // Only show floating button if in floating mode ?>
             <div class="tlc-widget-button" role="button" tabindex="0" aria-label="<?php esc_attr_e('Open Live Chat', 'telegram-live-chat'); ?>">
                 <svg class="tlc-widget-button-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="28px" height="28px">
                     <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
                 </svg>
             </div>
-            <div class="tlc-chat-widget">
+            <?php endif; ?>
+            <div class="tlc-chat-widget <?php if ($is_shortcode) echo 'active'; // If shortcode, widget starts open and visible ?>">
                 <div class="tlc-chat-header">
                     <span class="tlc-chat-header-title"><?php echo esc_html($header_title); ?></span>
                     <div>
                         <?php if (get_option(TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating', false)): ?>
-                            <button type="button" id="tlc-end-chat-button" class="tlc-header-button" title="<?php esc_attr_e('End Chat & Rate', 'telegram-live-chat'); ?>">&#10006;</button> <!-- Check mark or similar, using X for now -->
+                            <button type="button" id="tlc-end-chat-button" class="tlc-header-button" title="<?php esc_attr_e('End Chat & Rate', 'telegram-live-chat'); ?>">&#10006;</button>
                         <?php endif; ?>
+                        <?php if (!$is_shortcode && $display_mode === 'floating'): // Show close button only for floating widget ?>
                         <button class="tlc-chat-header-close tlc-header-button" aria-label="<?php esc_attr_e('Close Chat', 'telegram-live-chat'); ?>">&times;</button>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -311,7 +274,7 @@ class TLC_Public {
                     <h4><?php esc_html_e('Rate your chat experience:', 'telegram-live-chat'); ?></h4>
                     <div class="tlc-rating-stars">
                         <?php for ($i = 1; $i <= 5; $i++) : ?>
-                            <span class="tlc-star" data-value="<?php echo $i; ?>">&#9734;</span> <!-- Empty Star -->
+                            <span class="tlc-star" data-value="<?php echo $i; ?>">&#9734;</span>
                         <?php endfor; ?>
                     </div>
                     <textarea id="tlc-rating-comment" rows="3" placeholder="<?php esc_attr_e('Optional comments...', 'telegram-live-chat'); ?>" style="width: 100%; margin-top: 10px;"></textarea>
@@ -319,7 +282,6 @@ class TLC_Public {
                     <div id="tlc-rating-thankyou" style="display:none; margin-top:10px; color: green;"><?php esc_html_e('Thank you for your feedback!', 'telegram-live-chat'); ?></div>
                     <div id="tlc-rating-error" style="color: red; margin-top: 5px;"></div>
                 </div>
-
 
                 <div id="tlc-pre-chat-form" class="tlc-pre-chat-form" style="display: none; padding: 15px;">
                     <p><label for="tlc-visitor-name"><?php esc_html_e('Name *', 'telegram-live-chat'); ?></label>
@@ -330,7 +292,7 @@ class TLC_Public {
                     <div id="tlc-pre-chat-error" style="color: red; margin-top: 5px;"></div>
                 </div>
 
-                <div class="tlc-chat-content"> <!-- Wrapper for messages and input -->
+                <div class="tlc-chat-content">
                     <div class="tlc-chat-messages">
                         <?php if (!empty($initial_message_text)): ?>
                             <div class="tlc-message system"><?php echo nl2br(esc_html($initial_message_text)); ?></div>
@@ -345,10 +307,25 @@ class TLC_Public {
                     <?php endif; ?>
                     <textarea id="tlc-chat-message-input" placeholder="<?php esc_attr_e('Type your message...', 'telegram-live-chat'); ?>" aria-label="<?php esc_attr_e('Chat message input', 'telegram-live-chat'); ?>"></textarea>
                     <button id="tlc-send-message-button" type="button"><?php esc_html_e('Send', 'telegram-live-chat'); ?></button>
-                    </div> <!-- End tlc-chat-input-area -->
-                </div> <!-- End tlc-chat-content -->
+                    </div>
+                </div>
             </div>
         </div>
         <?php
+    }
+
+    /**
+     * Shortcode handler for [telegram_live_chat_widget].
+     * @param array $atts Shortcode attributes.
+     * @return string HTML output for the widget.
+     */
+    public function render_chat_widget_shortcode($atts) {
+        // Ensure scripts and styles are enqueued. They are hooked to wp_enqueue_scripts,
+        // which should fire before shortcodes are processed on the frontend.
+        // No need to call enqueue methods directly here typically.
+
+        ob_start();
+        $this->add_chat_widget_html(true); // Pass true to indicate it's an embedded/shortcode call
+        return ob_get_clean();
     }
 }

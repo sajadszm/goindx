@@ -49,7 +49,90 @@ class TLC_Admin {
     public function __construct( $plugin_name, $version ) {
         $this->plugin_name = $plugin_name;
         $this->version = $version;
+
+        // Meta box hooks
+        add_action( 'add_meta_boxes', array( $this, 'add_tlc_meta_box' ) );
+        add_action( 'save_post', array( $this, 'save_tlc_meta_box_data' ) );
     }
+
+    /**
+     * Adds the meta box container.
+     * @since 0.7.0
+     */
+    public function add_tlc_meta_box() {
+        $post_types = get_post_types( array('public' => true), 'names' ); // Apply to all public post types
+        foreach ( $post_types as $post_type ) {
+            add_meta_box(
+                TLC_PLUGIN_PREFIX . 'widget_disable_meta_box', // $id
+                __( 'Telegram Live Chat Settings', 'telegram-live-chat' ), // $title
+                array( $this, 'render_tlc_meta_box_content' ), // $callback
+                $post_type, // $screen
+                'side', // $context: 'normal', 'side', 'advanced'
+                'default' // $priority: 'high', 'core', 'default', 'low'
+            );
+        }
+    }
+
+    /**
+     * Render Meta Box content.
+     * @param WP_Post $post The post object.
+     * @since 0.7.0
+     */
+    public function render_tlc_meta_box_content( $post ) {
+        wp_nonce_field( TLC_PLUGIN_PREFIX . 'meta_box', TLC_PLUGIN_PREFIX . 'meta_box_nonce' );
+        $value = get_post_meta( $post->ID, '_' . TLC_PLUGIN_PREFIX . 'disable_widget', true );
+        ?>
+        <p>
+            <input type="checkbox"
+                   id="<?php echo TLC_PLUGIN_PREFIX; ?>disable_widget_checkbox"
+                   name="<?php echo TLC_PLUGIN_PREFIX; ?>disable_widget"
+                   value="1"
+                   <?php checked( $value, '1' ); ?> />
+            <label for="<?php echo TLC_PLUGIN_PREFIX; ?>disable_widget_checkbox">
+                <?php esc_html_e( 'Disable chat widget on this item?', 'telegram-live-chat' ); ?>
+            </label>
+        </p>
+        <?php
+    }
+
+    /**
+     * Save the meta when the post is saved.
+     * @param int $post_id The ID of the post being saved.
+     * @since 0.7.0
+     */
+    public function save_tlc_meta_box_data( $post_id ) {
+        // Check if our nonce is set.
+        if ( ! isset( $_POST[TLC_PLUGIN_PREFIX . 'meta_box_nonce'] ) ) {
+            return;
+        }
+        // Verify that the nonce is valid.
+        if ( ! wp_verify_nonce( $_POST[TLC_PLUGIN_PREFIX . 'meta_box_nonce'], TLC_PLUGIN_PREFIX . 'meta_box' ) ) {
+            return;
+        }
+        // If this is an autosave, our form has not been submitted, so we don't want to do anything.
+        if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+            return;
+        }
+        // Check the user's permissions.
+        if ( isset( $_POST['post_type'] ) && 'page' == $_POST['post_type'] ) {
+            if ( ! current_user_can( 'edit_page', $post_id ) ) {
+                return;
+            }
+        } else {
+            if ( ! current_user_can( 'edit_post', $post_id ) ) {
+                return;
+            }
+        }
+
+        /* OK, it's safe for us to save the data now. */
+        $meta_key = '_' . TLC_PLUGIN_PREFIX . 'disable_widget';
+        // Sanitize user input.
+        $new_meta_value = ( isset( $_POST[TLC_PLUGIN_PREFIX . 'disable_widget'] ) && $_POST[TLC_PLUGIN_PREFIX . 'disable_widget'] === '1' ) ? '1' : '0';
+
+        // Update the meta field in the database.
+        update_post_meta( $post_id, $meta_key, $new_meta_value );
+    }
+
 
     /**
      * Display the chat history page.
@@ -331,6 +414,20 @@ class TLC_Admin {
             array('option_name' => TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating', 'label_for_field' => __('Allow visitors to rate the chat session.', 'telegram-live-chat'), 'description' => __('If enabled, an "End Chat" button will appear, allowing users to rate their experience.', 'telegram-live-chat'))
         );
 
+        // Widget Display Mode Setting
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'widget_display_mode', array($this, 'sanitize_display_mode'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'widget_display_mode', __('Widget Display Mode', 'telegram-live-chat'), array($this, 'render_select_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'widget_customization_section',
+            array(
+                'option_name' => TLC_PLUGIN_PREFIX . 'widget_display_mode',
+                'default'     => 'floating',
+                'options'     => array(
+                    'floating'   => __('Floating (Default)', 'telegram-live-chat'),
+                    'shortcode'  => __('Manual via Shortcode [telegram_live_chat_widget]', 'telegram-live-chat'),
+                ),
+                'description' => __('Choose how the chat widget is displayed on your site.', 'telegram-live-chat')
+            )
+        );
+
         // Section for Automated Messages
         add_settings_section(
             TLC_PLUGIN_PREFIX . 'auto_messages_section',
@@ -494,6 +591,33 @@ class TLC_Admin {
             array( $this, 'render_canned_responses_field' ),    // Callback
             $this->plugin_name,                                 // Page
             TLC_PLUGIN_PREFIX . 'canned_responses_section'      // Section
+        );
+
+        // Section for Webhooks
+        add_settings_section(
+            TLC_PLUGIN_PREFIX . 'webhooks_section',
+            __( 'Webhook Settings', 'telegram-live-chat' ),
+            array( $this, 'render_webhooks_section_info' ),
+            $this->plugin_name
+        );
+
+        $webhook_events = array(
+            'on_chat_start' => __('Webhook URL on Chat Start', 'telegram-live-chat'),
+            'on_new_visitor_message' => __('Webhook URL on New Visitor Message', 'telegram-live-chat'),
+            'on_new_agent_message' => __('Webhook URL on New Agent Message', 'telegram-live-chat'),
+            // 'on_chat_end' => __('Webhook URL on Chat End', 'telegram-live-chat'), // Deferred
+        );
+
+        foreach ($webhook_events as $key => $label) {
+            register_setting($settings_group, TLC_PLUGIN_PREFIX . 'webhook_' . $key . '_url', array($this, 'sanitize_url_field'));
+            add_settings_field(TLC_PLUGIN_PREFIX . 'webhook_' . $key . '_url', $label, array($this, 'render_text_input_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'webhooks_section',
+                array('option_name' => TLC_PLUGIN_PREFIX . 'webhook_' . $key . '_url', 'default' => '', 'type' => 'url', 'placeholder' => 'https://example.com/your-webhook-endpoint', 'description' => __('Enter the URL to send a POST request to for this event.', 'telegram-live-chat'))
+            );
+        }
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'webhook_secret', array($this, 'sanitize_text_field'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'webhook_secret', __('Webhook Secret', 'telegram-live-chat'), array($this, 'render_text_input_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'webhooks_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'webhook_secret', 'default' => '', 'description' => __('Optional. If set, an X-TLC-Signature header (HMAC-SHA256 of payload) will be sent with each webhook.', 'telegram-live-chat'))
         );
 
 
@@ -1035,6 +1159,16 @@ class TLC_Admin {
     }
 
     /**
+     * Sanitize display mode setting.
+     * @param string $input
+     * @return string
+     */
+    public function sanitize_display_mode( $input ) {
+        $valid_options = array( 'floating', 'shortcode' );
+        return in_array( $input, $valid_options, true ) ? $input : 'floating';
+    }
+
+    /**
      * Render the field for managing canned responses.
      */
     public function render_canned_responses_field() {
@@ -1105,6 +1239,25 @@ class TLC_Admin {
             }
         }
         return array_slice($sanitized_responses, 0, 10);
+    }
+
+    /**
+     * Render the description for the Webhooks section.
+     */
+    public function render_webhooks_section_info() {
+        echo '<p>' . __( 'Configure URLs to receive notifications (webhooks) for chat events.', 'telegram-live-chat' ) . '</p>';
+    }
+
+    /**
+     * Sanitize URL field.
+     * @param string $url
+     * @return string
+     */
+    public function sanitize_url_field( $url ) {
+        if (empty($url)) {
+            return '';
+        }
+        return esc_url_raw( $url );
     }
 
 

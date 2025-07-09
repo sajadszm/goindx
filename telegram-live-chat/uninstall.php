@@ -87,6 +87,15 @@ if ( $remove_data ) {
     // Satisfaction Rating Option
     delete_option('tlc_enable_satisfaction_rating');
 
+    // Webhook Options
+    delete_option('tlc_webhook_on_chat_start_url');
+    delete_option('tlc_webhook_on_new_visitor_message_url');
+    delete_option('tlc_webhook_on_new_agent_message_url');
+    delete_option('tlc_webhook_secret');
+
+    // Widget Display Mode
+    delete_option('tlc_widget_display_mode');
+
     delete_option('tlc_enable_cleanup_on_uninstall'); // Also delete the option itself
 
     // Remove custom database tables

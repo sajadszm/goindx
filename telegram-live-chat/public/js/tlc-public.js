@@ -40,14 +40,10 @@
             localStorage.setItem('tlc_visitor_token', visitorToken);
         }
 
-        // Initial state of End Chat button
         if (satisfactionRatingEnabled) {
-            // The button is already in DOM via PHP, so no need to explicitly show unless it was hidden by default.
-            // $endChatButton.show();
         } else {
             $endChatButton.hide();
         }
-
 
         function showPreChatForm() {
             $preChatForm.show();
@@ -70,25 +66,25 @@
             $ratingForm.show();
             $ratingThankYou.hide();
             $ratingError.text('');
-            currentRating = 0; // Reset rating
-            $ratingStars.removeClass('rated');
+            currentRating = 0;
+            $ratingStars.removeClass('rated hovered'); // Clear visual selection
             $ratingComment.val('');
             stopPolling();
         }
 
+        function internalToggleWidget(forceShow) {
+            const shouldBeActive = forceShow !== undefined ? forceShow : !$chatWidget.hasClass('active');
+            $chatWidget.toggleClass('active', shouldBeActive);
 
-        $widgetButton.on('click', function() {
-            $chatWidget.toggleClass('active');
             if ($chatWidget.hasClass('active')) {
                 const visitorName = sessionStorage.getItem('tlc_visitor_name');
-                // If rating form was previously shown and then widget closed, revert to chat/pre-chat
-                if ($ratingForm.is(':visible')) {
+                if ($ratingForm.is(':visible')) { // If rating form was left open, revert to chat/pre-chat
                      if (preChatFormEnabled && !visitorName) {
                         showPreChatForm();
                     } else {
                         showChatArea();
                     }
-                } else {
+                } else { // Normal open logic
                      if (preChatFormEnabled && !visitorName) {
                         showPreChatForm();
                     } else {
@@ -98,11 +94,14 @@
             } else {
                 stopPolling();
             }
+        }
+
+        $widgetButton.on('click', function() {
+            internalToggleWidget();
         });
 
         $closeButton.on('click', function() {
-            $chatWidget.removeClass('active');
-            stopPolling();
+            internalToggleWidget(false); // Force hide
         });
 
         $startChatButton.on('click', function() {
@@ -128,7 +127,7 @@
             showChatArea();
         });
 
-        if ($chatWidget.hasClass('active')) {
+        if ($chatWidget.hasClass('active')) { // Initial state on page load if widget was left open
             const visitorName = sessionStorage.getItem('tlc_visitor_name');
             if (preChatFormEnabled && !visitorName) {
                 showPreChatForm();
@@ -137,46 +136,20 @@
             }
         }
 
-        $sendMessageButton.on('click', sendMessage);
+        $sendMessageButton.on('click', function() { sendMessageFromInput(); }); // Renamed for clarity
         $messageInput.on('keypress', function(e) {
             if (e.which === 13 && !e.shiftKey) {
                 e.preventDefault();
-                sendMessage();
+                sendMessageFromInput(); // Renamed for clarity
             }
         });
 
-        function sendMessage() {
+        function sendMessageFromInput() { // Renamed from sendMessage
             const messageText = $messageInput.val().trim();
             if (messageText === '') return;
-            appendMessage(messageText, 'visitor', sessionStorage.getItem('tlc_visitor_name') || 'You');
-            $messageInput.val('');
-            scrollToBottom();
-
-            $.ajax({
-                url: tlc_public_ajax.ajax_url,
-                type: 'POST',
-                data: {
-                    action: 'tlc_send_visitor_message',
-                    nonce: tlc_public_ajax.send_message_nonce,
-                    message: messageText,
-                    visitor_token: visitorToken,
-                    current_page: window.location.href,
-                    visitor_name: sessionStorage.getItem('tlc_visitor_name') || '',
-                    visitor_email: sessionStorage.getItem('tlc_visitor_email') || ''
-                },
-                success: function(response) {
-                    if (!response.success) {
-                        console.error('Error sending message:', response.data.message);
-                        appendMessage('Error: Could not send message. ' + response.data.message, 'system');
-                        scrollToBottom();
-                    }
-                },
-                error: function(jqXHR, textStatus, errorThrown) {
-                    console.error('AJAX error:', textStatus, errorThrown);
-                    appendMessage('Error: Network problem. Could not send message.', 'system');
-                    scrollToBottom();
-                }
-            });
+            // Call the API function which now holds the core send logic
+            TLC_Chat_API.sendMessage(messageText);
+            $messageInput.val(''); // Clear input after API call
         }
 
         function appendMessage(text, type, senderName = '', messageId = null) {
@@ -185,12 +158,12 @@
                 displayName = senderName || 'Agent';
             } else if (type === 'visitor') {
                 displayName = senderName || (sessionStorage.getItem('tlc_visitor_name') || 'You');
-            } else if (senderName === 'AutoMessage' && type === 'system') { // Special case for auto message
-                // No display name for auto system messages, or could be configurable
-            } else if (type === 'system' && senderName) { // Other system messages with potential sender
+            } else if (senderName === 'API' && type === 'system') {
+                 // No display name for API triggered system messages, or use senderName ('API')
+            } else if (senderName === 'AutoMessage' && type === 'system') {
+            } else if (type === 'system' && senderName) {
                 displayName = senderName;
             }
-
 
             const SENDER_NAME_HTML = displayName ? `<div class="tlc-message-sender">${escapeHtml(displayName)}</div>` : '';
             const messageHtml = `
@@ -238,7 +211,7 @@
         }
 
         function startPolling() {
-            if (pollingIntervalId === null) {
+            if (pollingIntervalId === null && $chatContent.is(':visible')) { // Only poll if chat area is visible
                 fetchNewMessages();
                 pollingIntervalId = setInterval(fetchNewMessages, WIDGET_POLLING_INTERVAL);
             }
@@ -251,13 +224,11 @@
             }
         }
 
-        // Automated Message Logic
         const autoMsgSettings = tlc_public_ajax.auto_message_settings;
         const autoMsgSessionKey = 'tlc_auto_msg_1_shown_session';
 
         function checkAndTriggerAutoMessage() {
             if (!autoMsgSettings || !autoMsgSettings.enable || sessionStorage.getItem(autoMsgSessionKey)) return;
-
             if (autoMsgSettings.page_targeting === 'specific_urls') {
                 let onTargetPage = false; const currentPage = window.location.href;
                 if (autoMsgSettings.specific_urls_array && autoMsgSettings.specific_urls_array.length > 0) {
@@ -267,7 +238,6 @@
                 }
                 if (!onTargetPage) return;
             }
-
             if (autoMsgSettings.trigger_type === 'time_on_page') {
                 setTimeout(showAutoMessage, autoMsgSettings.trigger_value * 1000);
             } else if (autoMsgSettings.trigger_type === 'scroll_depth') {
@@ -284,23 +254,23 @@
 
         function showAutoMessage() {
             if (sessionStorage.getItem(autoMsgSessionKey) || !autoMsgSettings.text) return;
-            if (!$chatWidget.hasClass('active')) {
-                $chatWidget.addClass('active');
-                // Decide if pre-chat should show before auto-message or if auto-message bypasses it
-                const visitorName = sessionStorage.getItem('tlc_visitor_name');
-                if (preChatFormEnabled && !visitorName) {
-                    showPreChatForm(); // Auto message might be lost if user doesn't complete pre-chat
-                } else {
-                    showChatArea(); // This starts polling
-                }
+
+            const visitorName = sessionStorage.getItem('tlc_visitor_name');
+            if (!$chatWidget.hasClass('active')) { // If widget is closed, open it
+                TLC_Chat_API.show(); // Use API to handle opening logic (pre-chat etc.)
             }
+             // Ensure chat area is visible before appending auto message
+            if ($preChatForm.is(':visible') || $ratingForm.is(':visible')) {
+                console.warn("TLC AutoMessage: Pre-chat or rating form is active. Auto message display deferred or skipped.");
+                return; // Don't show auto-message if pre-chat or rating form is up
+            }
+
             appendMessage(autoMsgSettings.text, 'system', 'AutoMessage');
             scrollToBottom();
             sessionStorage.setItem(autoMsgSessionKey, 'true');
         }
         checkAndTriggerAutoMessage();
 
-        // File Upload Logic
         if (fileUploadSettings && fileUploadSettings.enabled) {
             $fileUploadButton.on('click', function() { $fileInput.click(); });
             $fileInput.on('change', function(event) {
@@ -314,18 +284,18 @@
             const allowedTypes = fileUploadSettings.allowed_types.split(',').map(type => type.trim().toLowerCase());
             const fileExtension = file.name.split('.').pop().toLowerCase();
             let typeAllowed = false;
-            if (allowedTypes.length > 0) {
+            if (allowedTypes.length > 0 && allowedTypes[0] !== "") { // Check if not empty string (allow all)
                 if (allowedTypes.includes(fileExtension) || allowedTypes.includes('.' + fileExtension)) {
                     typeAllowed = true;
                 } else {
                     typeAllowed = allowedTypes.some(type => file.type.startsWith(type));
                 }
-            } else { // if allowedTypes is empty string, means allow all WP default types
-                typeAllowed = true; // Server will do final check against WP defaults
+            } else {
+                typeAllowed = true;
             }
 
             if (!typeAllowed) {
-                appendMessage(`File type not allowed: .${fileExtension}. Allowed: ${fileUploadSettings.allowed_types}`, 'system');
+                appendMessage(`File type not allowed: .${fileExtension}. Allowed: ${fileUploadSettings.allowed_types || 'any WordPress permitted type'}.`, 'system');
                 scrollToBottom(); return;
             }
 
@@ -364,34 +334,20 @@
             });
         }
 
-        // Rating Logic
         if (satisfactionRatingEnabled) {
-            $endChatButton.on('click', function() {
-                showRatingForm();
-            });
-
+            $endChatButton.on('click', function() { showRatingForm(); });
             $ratingStars.on('mouseover', function() {
-                const val = $(this).data('value');
-                $ratingStars.removeClass('hovered');
-                $ratingStars.each(function(idx) {
-                    if (idx < val) $(this).addClass('hovered');
-                });
-            }).on('mouseout', function() {
-                $ratingStars.removeClass('hovered');
+                const val = $(this).data('value'); $ratingStars.removeClass('hovered');
+                $ratingStars.each(function(idx) { if (idx < val) $(this).addClass('hovered'); });
+            }).on('mouseout', function() { $ratingStars.removeClass('hovered');
             }).on('click', function() {
-                currentRating = $(this).data('value');
-                $ratingStars.removeClass('rated hovered'); // Clear all first
-                $ratingStars.each(function(idx) {
-                    if (idx < currentRating) $(this).addClass('rated');
-                });
+                currentRating = $(this).data('value'); $ratingStars.removeClass('rated hovered');
+                $ratingStars.each(function(idx) { if (idx < currentRating) $(this).addClass('rated'); });
             });
 
             $submitRatingButton.on('click', function() {
-                if (currentRating === 0) {
-                    $ratingError.text('Please select a rating.'); return;
-                }
+                if (currentRating === 0) { $ratingError.text('Please select a rating.'); return; }
                 $ratingError.text(''); $submitRatingButton.prop('disabled', true);
-
                 $.ajax({
                     url: tlc_public_ajax.ajax_url, type: 'POST',
                     data: {
@@ -401,7 +357,7 @@
                     success: function(response) {
                         if (response.success) {
                             $ratingForm.hide(); $ratingThankYou.show();
-                            setTimeout(function() { $chatWidget.removeClass('active'); stopPolling(); }, 3000);
+                            setTimeout(function() { TLC_Chat_API.hide(); }, 3000); // Use API to hide
                         } else {
                             $ratingError.text(response.data.message || 'Could not submit rating.');
                             $submitRatingButton.prop('disabled', false);
@@ -427,5 +383,95 @@
             return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
         scrollToBottom();
+
+        // --- TLC_Chat_API ---
+        window.TLC_Chat_API = {
+            show: function() {
+                internalToggleWidget(true); // Force show
+            },
+            hide: function() {
+                internalToggleWidget(false); // Force hide
+            },
+            toggle: function() {
+                internalToggleWidget(); // Toggle current state
+            },
+            isOpen: function() {
+                return $chatWidget.hasClass('active') && !$preChatForm.is(':visible') && !$ratingForm.is(':visible');
+            },
+            isWidgetVisible: function() { // More general visibility of the popup
+                 return $chatWidget.hasClass('active');
+            },
+            sendMessage: function(text) {
+                if (typeof text !== 'string' || text.trim() === '') {
+                    console.error('TLC_Chat_API.sendMessage: Message text cannot be empty.');
+                    return false;
+                }
+
+                const visitorName = sessionStorage.getItem('tlc_visitor_name');
+                if (preChatFormEnabled && !visitorName) {
+                    console.warn('TLC_Chat_API.sendMessage: Pre-chat form needs to be completed. Opening widget.');
+                    this.show();
+                    return false;
+                }
+                if (!this.isWidgetVisible() || $preChatForm.is(':visible') || $ratingForm.is(':visible')) {
+                     this.show(); // This will try to show chat area
+                }
+                // After show, check if chat area is now visible
+                if (!$chatContent.is(':visible')) {
+                    console.warn('TLC_Chat_API.sendMessage: Chat area not ready (pre-chat or rating might be active).');
+                    return false;
+                }
+
+                appendMessage(text, 'visitor', visitorName || 'You');
+                scrollToBottom();
+
+                $.ajax({
+                    url: tlc_public_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'tlc_send_visitor_message',
+                        nonce: tlc_public_ajax.send_message_nonce,
+                        message: text,
+                        visitor_token: visitorToken,
+                        current_page: window.location.href,
+                        visitor_name: visitorName || '',
+                        visitor_email: sessionStorage.getItem('tlc_visitor_email') || ''
+                    },
+                    success: function(response){ if (!response.success) console.error('TLC_Chat_API.sendMessage failed:', response.data.message); },
+                    error: function(jqXHR, textStatus, errorThrown){ console.error('TLC_Chat_API.sendMessage AJAX error:', textStatus, errorThrown); }
+                });
+                return true;
+            },
+            setVisitorInfo: function(info) {
+                if (typeof info !== 'object' || info === null) return;
+                if (info.name && typeof info.name === 'string') {
+                    sessionStorage.setItem('tlc_visitor_name', info.name.trim());
+                    if ($preChatForm.is(':visible') && $visitorNameInput.val() === '') {
+                        $visitorNameInput.val(info.name.trim());
+                    }
+                }
+                if (info.email && typeof info.email === 'string') {
+                    sessionStorage.setItem('tlc_visitor_email', info.email.trim());
+                     if ($preChatForm.is(':visible') && $visitorEmailInput.val() === '') {
+                        $visitorEmailInput.val(info.email.trim());
+                    }
+                }
+            },
+            triggerAutoMessage: function(messageText) {
+                if (typeof messageText !== 'string' || messageText.trim() === '') return;
+
+                const visitorName = sessionStorage.getItem('tlc_visitor_name');
+                if (!$chatWidget.hasClass('active')) {
+                    this.show();
+                }
+                // After attempting to show, check if pre-chat or rating is active
+                 if ($preChatForm.is(':visible') || $ratingForm.is(':visible')) {
+                    console.warn("TLC_Chat_API.triggerAutoMessage: Pre-chat or rating form is active. Auto message will not display immediately.");
+                    return;
+                }
+                appendMessage(messageText, 'system', 'API');
+                scrollToBottom();
+            }
+        };
     });
 })( jQuery );

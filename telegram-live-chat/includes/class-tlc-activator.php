@@ -149,7 +149,16 @@ class TLC_Activator {
             TLC_PLUGIN_PREFIX . 'enable_pre_chat_form' => false,
 
             // Satisfaction Rating Default
-            TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating' => false, // Disabled by default
+            TLC_PLUGIN_PREFIX . 'enable_satisfaction_rating' => false,
+
+            // Webhook Defaults
+            TLC_PLUGIN_PREFIX . 'webhook_on_chat_start_url' => '',
+            TLC_PLUGIN_PREFIX . 'webhook_on_new_visitor_message_url' => '',
+            TLC_PLUGIN_PREFIX . 'webhook_on_new_agent_message_url' => '',
+            TLC_PLUGIN_PREFIX . 'webhook_secret' => '',
+
+            // Widget Display Mode Default
+            TLC_PLUGIN_PREFIX . 'widget_display_mode' => 'floating',
 
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
             // Add more default options here as needed
