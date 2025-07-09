@@ -123,6 +123,19 @@ class TLC_Activator {
             ),
             TLC_PLUGIN_PREFIX . 'offline_behavior' => 'show_offline_message',
 
+            // File Upload Defaults
+            TLC_PLUGIN_PREFIX . 'file_uploads_enable' => false,
+            TLC_PLUGIN_PREFIX . 'file_uploads_allowed_types' => 'jpg,jpeg,png,gif,pdf,doc,docx,txt',
+            TLC_PLUGIN_PREFIX . 'file_uploads_max_size_mb' => 2,
+
+            // Rate Limiting Defaults
+            TLC_PLUGIN_PREFIX . 'rate_limit_enable' => true,
+            TLC_PLUGIN_PREFIX . 'rate_limit_threshold' => 5,
+            TLC_PLUGIN_PREFIX . 'rate_limit_period_seconds' => 10,
+
+            // Canned Responses Default
+            TLC_PLUGIN_PREFIX . 'canned_responses' => array(),
+
             TLC_PLUGIN_PREFIX . 'enable_cleanup_on_uninstall' => false,
             // Add more default options here as needed
         );

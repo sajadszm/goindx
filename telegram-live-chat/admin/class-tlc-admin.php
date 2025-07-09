@@ -412,6 +412,69 @@ class TLC_Admin {
             )
         );
 
+        // Section for File Upload Settings
+        add_settings_section(
+            TLC_PLUGIN_PREFIX . 'file_uploads_section',
+            __( 'File Upload Settings (Visitor to Agent)', 'telegram-live-chat' ),
+            array( $this, 'render_file_uploads_section_info' ),
+            $this->plugin_name
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'file_uploads_enable', array($this, 'sanitize_checkbox'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'file_uploads_enable', __('Enable File Uploads', 'telegram-live-chat'), array($this, 'render_checkbox_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'file_uploads_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'file_uploads_enable', 'label_for_field' => __('Allow visitors to upload files in the chat.', 'telegram-live-chat'))
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'file_uploads_allowed_types', array($this, 'sanitize_allowed_file_types'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'file_uploads_allowed_types', __('Allowed File Types', 'telegram-live-chat'), array($this, 'render_text_input_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'file_uploads_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'file_uploads_allowed_types', 'default' => 'jpg,jpeg,png,gif,pdf,doc,docx,txt', 'description' => __('Comma-separated list of allowed file extensions (e.g., jpg,png,pdf). Leave empty to allow all types permitted by WordPress.', 'telegram-live-chat'))
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'file_uploads_max_size_mb', array($this, 'sanitize_absint'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'file_uploads_max_size_mb', __('Max File Size (MB)', 'telegram-live-chat'), array($this, 'render_text_input_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'file_uploads_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'file_uploads_max_size_mb', 'default' => '2', 'type' => 'number', 'description' => __('Maximum file size in Megabytes allowed for upload. WordPress PHP limits also apply.', 'telegram-live-chat'))
+        );
+
+        // Section for Spam Protection / Rate Limiting
+        add_settings_section(
+            TLC_PLUGIN_PREFIX . 'spam_protection_section',
+            __( 'Spam Protection', 'telegram-live-chat' ),
+            array( $this, 'render_spam_protection_section_info' ),
+            $this->plugin_name
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'rate_limit_enable', array($this, 'sanitize_checkbox'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'rate_limit_enable', __('Enable Message Rate Limiting', 'telegram-live-chat'), array($this, 'render_checkbox_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'spam_protection_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'rate_limit_enable', 'label_for_field' => __('Prevent users from sending too many messages in a short period.', 'telegram-live-chat'))
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'rate_limit_threshold', array($this, 'sanitize_absint'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'rate_limit_threshold', __('Rate Limit: Messages', 'telegram-live-chat'), array($this, 'render_text_input_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'spam_protection_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'rate_limit_threshold', 'default' => '5', 'type' => 'number', 'description' => __('Maximum number of messages allowed within the defined period.', 'telegram-live-chat'))
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'rate_limit_period_seconds', array($this, 'sanitize_absint'));
+        add_settings_field(TLC_PLUGIN_PREFIX . 'rate_limit_period_seconds', __('Rate Limit: Period (seconds)', 'telegram-live-chat'), array($this, 'render_text_input_field'), $this->plugin_name, TLC_PLUGIN_PREFIX . 'spam_protection_section',
+            array('option_name' => TLC_PLUGIN_PREFIX . 'rate_limit_period_seconds', 'default' => '10', 'type' => 'number', 'description' => __('Time period in seconds for the message limit.', 'telegram-live-chat'))
+        );
+
+        // Section for Predefined Responses
+        add_settings_section(
+            TLC_PLUGIN_PREFIX . 'canned_responses_section',
+            __( 'Predefined Responses', 'telegram-live-chat' ),
+            array( $this, 'render_canned_responses_section_info' ),
+            $this->plugin_name
+        );
+
+        register_setting($settings_group, TLC_PLUGIN_PREFIX . 'canned_responses', array($this, 'sanitize_canned_responses'));
+        add_settings_field(
+            TLC_PLUGIN_PREFIX . 'canned_responses_field', // Field ID
+            __( 'Manage Responses', 'telegram-live-chat' ),      // Title
+            array( $this, 'render_canned_responses_field' ),    // Callback
+            $this->plugin_name,                                 // Page
+            TLC_PLUGIN_PREFIX . 'canned_responses_section'      // Section
+        );
+
 
         // Section for Uninstall Settings
         add_settings_section(
@@ -896,14 +959,131 @@ class TLC_Admin {
         return in_array( $input, $valid_options, true ) ? $input : 'show_offline_message';
     }
 
+    /**
+     * Render the description for the File Uploads section.
+     */
+    public function render_file_uploads_section_info() {
+        echo '<p>' . __( 'Configure file upload settings for visitors. Ensure your server has appropriate permissions and upload limits.', 'telegram-live-chat' ) . '</p>';
+    }
 
     /**
-     * Enqueue styles and scripts for WP Color Picker.
+     * Sanitize allowed file types string (comma-separated list of extensions).
+     * @param string $input
+     * @return string
+     */
+    public function sanitize_allowed_file_types( $input ) {
+        if (empty($input)) {
+            return ''; // Allow all if empty
+        }
+        $types = explode( ',', $input );
+        $sanitized_types = array();
+        foreach ( $types as $type ) {
+            $trimmed_type = trim( strtolower( $type ) );
+            // Remove leading dots if any, and keep alphanumeric
+            $sanitized_type = preg_replace( '/[^a-z0-9]/', '', $trimmed_type );
+            if ( !empty($sanitized_type) ) {
+                $sanitized_types[] = $sanitized_type;
+            }
+        }
+        return implode( ',', array_unique( $sanitized_types ) );
+    }
+
+    /**
+     * Render the description for the Spam Protection section.
+     */
+    public function render_spam_protection_section_info() {
+        echo '<p>' . __( 'Basic spam protection measures for chat messages.', 'telegram-live-chat' ) . '</p>';
+    }
+
+    /**
+     * Render the description for the Predefined Responses section.
+     */
+    public function render_canned_responses_section_info() {
+        echo '<p>' . __( 'Create and manage predefined responses that agents can quickly use. Each response needs a unique shortcut (e.g., /greeting, !policy).', 'telegram-live-chat' ) . '</p>';
+    }
+
+    /**
+     * Render the field for managing canned responses.
+     */
+    public function render_canned_responses_field() {
+        $option_name = TLC_PLUGIN_PREFIX . 'canned_responses';
+        $responses = get_option( $option_name, array() );
+        if (empty($responses)) { // Ensure there's at least one empty row for the template if none exist
+            $responses[] = array('shortcut' => '', 'message' => '');
+        }
+        ?>
+        <div id="tlc-canned-responses-container">
+            <?php foreach ( $responses as $index => $response ) : ?>
+                <div class="tlc-canned-response-item" style="margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; background: #f9f9f9;">
+                    <p>
+                        <label for="<?php echo esc_attr( $option_name . '[' . $index . '][shortcut]' ); ?>"><?php esc_html_e( 'Shortcut:', 'telegram-live-chat' ); ?></label><br/>
+                        <input type="text"
+                               id="<?php echo esc_attr( $option_name . '[' . $index . '][shortcut]' ); ?>"
+                               name="<?php echo esc_attr( $option_name . '[' . $index . '][shortcut]' ); ?>"
+                               value="<?php echo esc_attr( $response['shortcut'] ?? '' ); ?>"
+                               class="regular-text"
+                               placeholder="/shortcut"/>
+                    </p>
+                    <p>
+                        <label for="<?php echo esc_attr( $option_name . '[' . $index . '][message]' ); ?>"><?php esc_html_e( 'Message:', 'telegram-live-chat' ); ?></label><br/>
+                        <textarea id="<?php echo esc_attr( $option_name . '[' . $index . '][message]' ); ?>"
+                                  name="<?php echo esc_attr( $option_name . '[' . $index . '][message]' ); ?>"
+                                  rows="3"
+                                  class="large-text code"><?php echo esc_textarea( $response['message'] ?? '' ); ?></textarea>
+                    </p>
+                    <button type="button" class="button tlc-remove-canned-response"><?php esc_html_e( 'Remove', 'telegram-live-chat' ); ?></button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <button type="button" id="tlc-add-canned-response" class="button button-secondary"><?php esc_html_e( 'Add New Response', 'telegram-live-chat' ); ?></button>
+        <p class="description"><?php esc_html_e('Click "Add New Response" to add more. Remember to save changes.', 'telegram-live-chat'); ?></p>
+
+        <!-- Template for new responses (hidden) -->
+        <div id="tlc-canned-response-template" style="display:none;">
+            <div class="tlc-canned-response-item" style="margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; background: #f9f9f9;">
+                <p>
+                    <label for=""><?php esc_html_e( 'Shortcut:', 'telegram-live-chat' ); ?></label><br/>
+                    <input type="text" name="" value="" class="regular-text" placeholder="/shortcut"/>
+                </p>
+                <p>
+                    <label for=""><?php esc_html_e( 'Message:', 'telegram-live-chat' ); ?></label><br/>
+                    <textarea name="" rows="3" class="large-text code"></textarea>
+                </p>
+                <button type="button" class="button tlc-remove-canned-response"><?php esc_html_e( 'Remove', 'telegram-live-chat' ); ?></button>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Sanitize canned responses array.
+     * @param array $input
+     * @return array
+     */
+    public function sanitize_canned_responses( $input ) {
+        $sanitized_responses = array();
+        if ( is_array( $input ) ) {
+            foreach ( $input as $response_data ) {
+                if ( is_array( $response_data ) && !empty( $response_data['shortcut'] ) && !empty( $response_data['message'] ) ) {
+                    $sanitized_responses[] = array(
+                        'shortcut' => sanitize_text_field( $response_data['shortcut'] ),
+                        'message'  => sanitize_textarea_field( $response_data['message'] ),
+                    );
+                }
+            }
+        }
+        // Limit to max 10 for now
+        return array_slice($sanitized_responses, 0, 10);
+    }
+
+
+    /**
+     * Enqueue styles and scripts for Admin Settings pages.
      *
-     * @since 0.3.0
+     * @since 0.3.0 (renamed in 0.4.0)
      * @param string $hook_suffix The current admin page.
      */
-    public function enqueue_color_picker_assets( $hook_suffix ) {
+    public function enqueue_admin_settings_scripts( $hook_suffix ) {
         // Only load on our plugin's main settings page.
         // The hook for the main page is 'toplevel_page_{menu_slug}'
         // $this->plugin_name is 'telegram-live-chat' (which is the menu_slug for the main page)
@@ -919,5 +1099,20 @@ class TLC_Admin {
             $this->version,
             true
         );
+
+        // For Canned Responses Repeater
+        wp_enqueue_script(
+            $this->plugin_name . '-admin-canned-responses',
+            plugin_dir_url( __FILE__ ) . 'js/tlc-admin-canned-responses.js',
+            array( 'jquery' ),
+            $this->version,
+            true
+        );
+        wp_localize_script(
+            $this->plugin_name . '-admin-canned-responses',
+            'tlc_plugin_prefix', // Will be available as tlc_plugin_prefix in JS
+            TLC_PLUGIN_PREFIX
+        );
+
     }
 }

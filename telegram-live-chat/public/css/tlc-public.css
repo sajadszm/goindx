@@ -165,18 +165,37 @@
     box-sizing: border-box;
 }
 
-.tlc-chat-input-area button {
-    padding: 0 15px;
-    background-color: #0073aa;
-    color: white;
+.tlc-chat-input-area button,
+.tlc-chat-input-area .tlc-icon-button { /* Common styles for all buttons in input area */
+    background-color: var(--tlc-header-bg-color); /* Use header bg for consistency or a new var */
+    color: var(--tlc-header-text-color);
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px; /* Match textarea */
+    padding: 0 10px; /* Default padding */
 }
 
-.tlc-chat-input-area button:hover {
-    background-color: #005a87; /* Consider making this a darker shade of header or button bg */
+.tlc-chat-input-area .tlc-icon-button svg { /* Icon color */
+    fill: var(--tlc-header-text-color);
+}
+
+.tlc-chat-input-area .tlc-icon-button { /* Specific for icon button */
+    margin-right: 5px; /* Space between icon button and textarea */
+    min-width: 40px; /* Ensure it's squarish, padding handles the rest */
+}
+
+.tlc-chat-input-area button#tlc-send-message-button { /* Specific for send button */
+    padding: 0 15px; /* Original padding for send button text */
+}
+
+.tlc-chat-input-area button:hover,
+.tlc-chat-input-area .tlc-icon-button:hover {
+    opacity: 0.85;
 }
 
 /* Hide on Desktop/Mobile */

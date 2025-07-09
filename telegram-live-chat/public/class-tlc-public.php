@@ -102,6 +102,12 @@ class TLC_Public {
                 'is_user_logged_in'     => is_user_logged_in(),
                 'auto_message_settings' => $this->get_auto_message_settings_for_js(),
                 'work_hours_info'       => $this->get_work_hours_info_for_js(),
+                'file_upload_settings'  => array(
+                    'enabled'       => get_option(TLC_PLUGIN_PREFIX . 'file_uploads_enable', false),
+                    'allowed_types' => get_option(TLC_PLUGIN_PREFIX . 'file_uploads_allowed_types', 'jpg,jpeg,png,gif,pdf,doc,docx,txt'),
+                    'max_size_mb'   => absint(get_option(TLC_PLUGIN_PREFIX . 'file_uploads_max_size_mb', 2)),
+                    'upload_nonce'  => wp_create_nonce('tlc_upload_chat_file_nonce')
+                ),
             )
         );
     }
@@ -298,8 +304,14 @@ class TLC_Public {
                     <?php endif; ?>
                 </div>
                 <div class="tlc-chat-input-area">
+                    <?php if (get_option(TLC_PLUGIN_PREFIX . 'file_uploads_enable', false)): ?>
+                    <button type="button" id="tlc-file-upload-button" class="tlc-icon-button" aria-label="<?php esc_attr_e('Upload file', 'telegram-live-chat'); ?>">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20px" height="20px"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v11.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
+                    </button>
+                    <input type="file" id="tlc-chat-file-input" style="display: none;" />
+                    <?php endif; ?>
                     <textarea id="tlc-chat-message-input" placeholder="<?php esc_attr_e('Type your message...', 'telegram-live-chat'); ?>" aria-label="<?php esc_attr_e('Chat message input', 'telegram-live-chat'); ?>"></textarea>
-                    <button id="tlc-send-message-button"><?php esc_html_e('Send', 'telegram-live-chat'); ?></button>
+                    <button id="tlc-send-message-button" type="button"><?php esc_html_e('Send', 'telegram-live-chat'); ?></button>
                 </div>
             </div>
         </div>

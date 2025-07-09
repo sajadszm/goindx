@@ -68,6 +68,19 @@ if ( $remove_data ) {
     delete_option('tlc_work_hours');
     delete_option('tlc_offline_behavior');
 
+    // File Upload Options
+    delete_option('tlc_file_uploads_enable');
+    delete_option('tlc_file_uploads_allowed_types');
+    delete_option('tlc_file_uploads_max_size_mb');
+
+    // Rate Limiting Options
+    delete_option('tlc_rate_limit_enable');
+    delete_option('tlc_rate_limit_threshold');
+    delete_option('tlc_rate_limit_period_seconds');
+
+    // Canned Responses Option
+    delete_option('tlc_canned_responses');
+
     delete_option('tlc_enable_cleanup_on_uninstall'); // Also delete the option itself
 
     // Remove custom database tables

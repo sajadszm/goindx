@@ -125,6 +125,11 @@ class TLC_Plugin {
          */
         require_once TLC_PLUGIN_DIR . 'includes/class-tlc-telegram-bot-api.php';
 
+        /**
+         * The class responsible for handling encryption/decryption.
+         */
+        require_once TLC_PLUGIN_DIR . 'includes/class-tlc-encryption.php';
+
         $this->loader = new TLC_Loader();
 
     }
@@ -159,7 +164,7 @@ class TLC_Plugin {
 
         $this->loader->add_action( 'admin_menu', $plugin_admin, 'add_plugin_admin_menu' );
         $this->loader->add_action( 'admin_init', $plugin_admin, 'register_settings' );
-        $this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_color_picker_assets' );
+        $this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_admin_settings_scripts' ); // Renamed
         // Example: $this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
         // Example: $this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
 
@@ -189,15 +194,16 @@ class TLC_Plugin {
         $this->loader->add_action( TLC_PLUGIN_PREFIX . 'telegram_polling_cron', $this, 'run_telegram_polling' );
 
         // Hook to schedule/unschedule cron when settings are updated
-        // This specific hook `update_option_{option_name}` is dynamic.
-        // We also need to handle plugin activation/deactivation.
         add_action( 'update_option_' . TLC_PLUGIN_PREFIX . 'enable_telegram_polling', array( $this, 'handle_polling_setting_change' ), 10, 2 );
         add_action( 'update_option_' . TLC_PLUGIN_PREFIX . 'polling_interval', array( $this, 'handle_polling_setting_change' ), 10, 2 );
 
         // AJAX handler for fetching new messages for the widget
         $this->loader->add_action( 'wp_ajax_tlc_fetch_new_messages', $this, 'handle_fetch_new_messages' );
         $this->loader->add_action( 'wp_ajax_nopriv_tlc_fetch_new_messages', $this, 'handle_fetch_new_messages' );
-        // Also handle on activation - this is already covered if we schedule on init if not scheduled
+
+        // AJAX handler for file uploads
+        $this->loader->add_action( 'wp_ajax_tlc_upload_chat_file', $this, 'handle_upload_chat_file' );
+        $this->loader->add_action( 'wp_ajax_nopriv_tlc_upload_chat_file', $this, 'handle_upload_chat_file' );
     }
 
     /**
@@ -206,7 +212,7 @@ class TLC_Plugin {
      * @return array
      */
     public function add_custom_cron_schedules( $schedules ) {
-        $tlc_admin = new TLC_Admin($this->plugin_name, $this->version); // To access get_polling_intervals
+        $tlc_admin = new TLC_Admin($this->plugin_name, $this->version);
         $custom_intervals = $tlc_admin->get_polling_intervals();
 
         if(isset($custom_intervals['15_seconds'])) {
@@ -222,7 +228,7 @@ class TLC_Plugin {
             );
         }
         if(isset($custom_intervals['60_seconds'])) {
-            $schedules['tlc_60_seconds'] = array( // Equivalent to 'hourly' but for consistency
+            $schedules['tlc_60_seconds'] = array(
                 'interval' => 60,
                 'display'  => __( 'Every 1 Minute (TLC)', 'telegram-live-chat' )
             );
@@ -233,9 +239,6 @@ class TLC_Plugin {
                 'display'  => __( 'Every 5 Minutes (TLC)', 'telegram-live-chat' )
             );
         }
-        // Note: WordPress's minimum cron interval is typically 1 minute unless filtered otherwise or server cron is used.
-        // True 15/30 second polling might require server-side cron triggering wp-cron.php frequently.
-        // For now, we define them, but actual execution frequency depends on how often WP Cron is triggered.
         return $schedules;
     }
 
@@ -246,10 +249,6 @@ class TLC_Plugin {
         $this->schedule_or_unschedule_polling_cron();
     }
 
-    /**
-     * Schedule or unschedule the polling cron job based on settings.
-     * This should also be called on plugin activation and deactivation.
-     */
     public function schedule_or_unschedule_polling_cron() {
         $is_polling_enabled = get_option( TLC_PLUGIN_PREFIX . 'enable_telegram_polling' );
         $cron_hook = TLC_PLUGIN_PREFIX . 'telegram_polling_cron';
@@ -257,16 +256,11 @@ class TLC_Plugin {
         if ( $is_polling_enabled ) {
             if ( ! wp_next_scheduled( $cron_hook ) ) {
                 $interval_key = get_option( TLC_PLUGIN_PREFIX . 'polling_interval', '30_seconds' );
-                // Convert interval key to WP schedule key
                 $wp_schedule_key = TLC_PLUGIN_PREFIX . str_replace('_seconds', '_seconds', $interval_key);
-                // A bit redundant here, but if keys were '15s' vs 'tlc_15_seconds' it would map.
-                // For our current setup, 'tlc_15_seconds' is directly the key in schedules array.
 
-                // Ensure the schedule exists, especially if `add_custom_cron_schedules` hasn't fired yet on activation.
                 $schedules = wp_get_schedules();
                 if (!isset($schedules[$wp_schedule_key])) {
-                     // Fallback if our custom schedule isn't registered for some reason (e.g. during activation)
-                    $wp_schedule_key = 'hourly'; // A safe default
+                    $wp_schedule_key = 'hourly';
                      error_log(TLC_PLUGIN_PREFIX . "Warning: Custom cron schedule '{$wp_schedule_key}' not found. Falling back to 'hourly'.");
                 }
 
@@ -281,14 +275,9 @@ class TLC_Plugin {
         }
     }
 
-
-    /**
-     * The actual cron job function to poll Telegram.
-     */
     public function run_telegram_polling() {
         $is_polling_enabled = get_option( TLC_PLUGIN_PREFIX . 'enable_telegram_polling' );
         if ( ! $is_polling_enabled ) {
-            // Ensure cron is unscheduled if it's running while disabled.
             $this->schedule_or_unschedule_polling_cron();
             return;
         }
@@ -305,24 +294,16 @@ class TLC_Plugin {
             return;
         }
 
-        // Check if getMe works, as a basic health check before polling
         $me = $telegram_api->get_me();
         if (is_wp_error($me) || !$me['ok']) {
             $error_message = is_wp_error($me) ? $me->get_error_message() : ($me['description'] ?? 'Unknown error');
             error_log(TLC_PLUGIN_PREFIX . "Telegram polling cron: getMe failed. Halting polling. Error: " . $error_message);
-            // Optionally, disable polling here and notify admin
-            // update_option(TLC_PLUGIN_PREFIX . 'enable_telegram_polling', false);
-            // $this->schedule_or_unschedule_polling_cron();
             return;
         }
 
-
         $last_update_id = (int) get_option( TLC_PLUGIN_PREFIX . 'last_telegram_update_id', 0 );
         $offset = $last_update_id > 0 ? $last_update_id + 1 : null;
-
-        // Use a timeout for getUpdates. Telegram recommends up to 50 seconds for long polling.
-        // WP Cron's reliability for exact timing is variable, so short polling is often more practical here.
-        $updates = $telegram_api->get_updates( $offset, 100, 20 ); // Fetch up to 100 updates, 20s timeout for long poll
+        $updates = $telegram_api->get_updates( $offset, 100, 20 );
 
         if ( is_wp_error( $updates ) ) {
             error_log( TLC_PLUGIN_PREFIX . 'Telegram polling error: ' . $updates->get_error_message() );
@@ -337,83 +318,74 @@ class TLC_Plugin {
                     if ($current_update_id > $new_last_update_id) {
                         $new_last_update_id = $current_update_id;
                     }
-                    // Process the update (this is for Step 3 of Phase 2)
-                    // For now, just log it.
-                    // error_log(TLC_PLUGIN_PREFIX . 'Received update ID: ' . $update['update_id'] . ' - Content: ' . json_encode($update));
-                     $this->process_telegram_update($update); // Call processing function
+                     $this->process_telegram_update($update);
                 }
             }
 
             if ( $new_last_update_id > $last_update_id ) {
                 update_option( TLC_PLUGIN_PREFIX . 'last_telegram_update_id', $new_last_update_id );
                  error_log(TLC_PLUGIN_PREFIX . "Polling successful. Processed " . count($updates['result']) . " updates. New last_update_id: " . $new_last_update_id);
-            } else {
-                // error_log(TLC_PLUGIN_PREFIX . "Polling successful. No new updates.");
             }
         } else {
              error_log(TLC_PLUGIN_PREFIX . 'Telegram polling: No updates or error in response structure. Response: ' . json_encode($updates));
         }
     }
 
-    /**
-     * Placeholder for processing a single Telegram update.
-     * This will be fully implemented in "Core Chat Logic (Telegram to Website - Part 2)".
-     * @param array $update The update object from Telegram.
-     */
     public function process_telegram_update( $update ) {
         global $wpdb;
 
-        // Check if this is a message, has text, and is a reply
         if ( !isset( $update['message']['message_id'] ) ||
              !isset( $update['message']['text'] ) ||
              !isset( $update['message']['from']['id'] ) ||
              !isset( $update['message']['reply_to_message'] ) ) {
-            // error_log(TLC_PLUGIN_PREFIX . "Update is not a valid reply message. Update ID: " . ($update['update_id'] ?? 'N/A'));
             return;
         }
 
-        // 1. Check if the reply is to a message sent by our bot.
-        // We need the bot's ID for this. We can get it from getMe and store it.
-        // For now, we assume any reply processed here is intended for the system if it matches format.
-        // A stricter check would be: $update['message']['reply_to_message']['from']['id'] == $this->get_bot_id()
-        // Let's add a quick check for `is_bot` if available on `reply_to_message.from`
         if ( !isset($update['message']['reply_to_message']['from']['is_bot']) || !$update['message']['reply_to_message']['from']['is_bot']) {
-            // error_log(TLC_PLUGIN_PREFIX . "Reply is not to a bot. Ignoring. Update ID: " . $update['update_id']);
-            // This check might be too strict if bot details are not always present or if bot is replying to itself (unlikely here)
-            // A better check is to see if we can parse session_id from the replied-to message.
+            // Optionally log if reply is not to a bot, or if bot ID doesn't match our bot_id (more advanced)
         }
 
         $replied_to_text = $update['message']['reply_to_message']['text'] ?? ($update['message']['reply_to_message']['caption'] ?? '');
         if ( empty( $replied_to_text ) ) {
-            // error_log(TLC_PLUGIN_PREFIX . "Replied-to message has no text/caption. Update ID: " . $update['update_id']);
             return;
         }
 
-        // 2. Parse session_id from reply_to_message.text
-        // Format: "New chat message from visitor (Session: XX):"
         preg_match( '/\(Session: (\d+)\)/', $replied_to_text, $matches );
         if ( !isset( $matches[1] ) || !is_numeric( $matches[1] ) ) {
-            // error_log(TLC_PLUGIN_PREFIX . "Could not parse session_id from replied message. Text: " . $replied_to_text . " Update ID: " . $update['update_id']);
             return;
         }
         $session_id = (int) $matches[1];
 
-        // 3. Get the agent's telegram_user_id
         $agent_telegram_id = (int) $update['message']['from']['id'];
-        $agent_message_text = sanitize_textarea_field( $update['message']['text'] );
+        $raw_agent_message_text = $update['message']['text']; // Keep raw text for shortcut check
         $telegram_message_id = (int) $update['message']['message_id'];
 
-        // 4. Validate this agent telegram_user_id against the configured list
+        // Check for Canned Response shortcut
+        $canned_responses = get_option(TLC_PLUGIN_PREFIX . 'canned_responses', array());
+        $final_agent_message_text = $raw_agent_message_text; // Default to raw text
+
+        if (is_array($canned_responses)) {
+            foreach ($canned_responses as $response) {
+                if (isset($response['shortcut']) && isset($response['message']) && trim($raw_agent_message_text) === trim($response['shortcut'])) {
+                    $final_agent_message_text = $response['message'];
+                    error_log(TLC_PLUGIN_PREFIX . "Canned response triggered by shortcut: " . $response['shortcut']);
+                    break;
+                }
+            }
+        }
+
+        $sanitized_agent_message_text = sanitize_textarea_field($final_agent_message_text);
+
+
         $admin_user_ids_str = get_option( TLC_PLUGIN_PREFIX . 'admin_user_ids', '' );
         $configured_agent_ids = array_map( 'trim', explode( ',', $admin_user_ids_str ) );
-        $numeric_agent_ids = array_filter( $configured_agent_ids, 'is_numeric' ); // Ensure all are numeric
+        $numeric_agent_ids = array_filter( $configured_agent_ids, 'is_numeric' );
 
-        if ( !in_array( (string)$agent_telegram_id, $numeric_agent_ids ) ) { // Cast to string for in_array comparison as options are strings
+        if ( !in_array( (string)$agent_telegram_id, $numeric_agent_ids ) ) {
             error_log(TLC_PLUGIN_PREFIX . "Message from non-configured agent ID: " . $agent_telegram_id . ". Update ID: " . $update['update_id']);
             return;
         }
 
-        // 5. Store the agent's message in tlc_chat_messages
         $messages_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
         $message_inserted = $wpdb->insert(
             $messages_table,
@@ -421,10 +393,10 @@ class TLC_Plugin {
                 'session_id'        => $session_id,
                 'sender_type'       => 'agent',
                 'telegram_user_id'  => $agent_telegram_id,
-                'message_content'   => $agent_message_text,
-                'timestamp'         => current_time( 'mysql' ), // Could also use $update['message']['date'] converted to MySQL format
+                'message_content'   => $sanitized_agent_message_text, // Use potentially replaced and sanitized text
+                'timestamp'         => current_time( 'mysql' ),
                 'telegram_message_id' => $telegram_message_id,
-                'is_read'           => 0, // Mark as unread for the visitor
+                'is_read'           => 0,
             )
         );
 
@@ -434,13 +406,12 @@ class TLC_Plugin {
         }
         $db_message_id = $wpdb->insert_id;
 
-        // 6. Update last_active_time and status for the session in tlc_chat_sessions
         $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
         $wpdb->update(
             $sessions_table,
             array(
                 'last_active_time' => current_time( 'mysql' ),
-                'status' => 'active' // Ensure session is active if agent replies
+                'status' => 'active'
             ),
             array( 'session_id' => $session_id )
         );
@@ -448,15 +419,9 @@ class TLC_Plugin {
         error_log(TLC_PLUGIN_PREFIX . "Successfully processed and stored agent reply. DB Message ID: $db_message_id, Session: $session_id, Agent: $agent_telegram_id. Update ID: " . $update['update_id']);
     }
 
-    /**
-     * Handles AJAX request from frontend widget to fetch new messages.
-     *
-     * @since 0.2.0
-     */
     public function handle_fetch_new_messages() {
         global $wpdb;
 
-        // Verify nonce
         if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( $_POST['nonce'] ), 'tlc_fetch_new_messages_nonce' ) ) {
             wp_send_json_error( array( 'message' => __( 'Nonce verification failed for fetch.', 'telegram-live-chat' ) ), 403 );
             return;
@@ -473,20 +438,16 @@ class TLC_Plugin {
         $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
         $messages_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
 
-        // Get session_id from visitor_token
         $session_id = $wpdb->get_var( $wpdb->prepare(
             "SELECT session_id FROM $sessions_table WHERE visitor_token = %s",
             $visitor_token
         ) );
 
         if ( ! $session_id ) {
-            // Don't send error if session not found yet, could be initial poll before first message sent by visitor
             wp_send_json_success( array( 'messages' => array() ) );
             return;
         }
 
-        // Fetch new messages (agent or system messages) for this session
-        // that have an ID greater than the last one displayed by the client.
         $new_messages = $wpdb->get_results( $wpdb->prepare(
             "SELECT message_id, sender_type, message_content, timestamp
              FROM $messages_table
@@ -513,52 +474,22 @@ class TLC_Plugin {
         wp_send_json_success( array( 'messages' => $output_messages ) );
     }
 
-
-    /**
-     * Run the loader to execute all of the hooks with WordPress.
-     *
-     * @since    0.1.0
-     */
     public function run() {
         $this->loader->run();
     }
 
-    /**
-     * The name of the plugin used to uniquely identify it within the context of
-     * WordPress and to define internationalization functionality.
-     *
-     * @since     0.1.0
-     * @return    string    The name of the plugin.
-     */
     public function get_plugin_name() {
         return $this->plugin_name;
     }
 
-    /**
-     * The reference to the class that orchestrates the hooks with the plugin.
-     *
-     * @since     0.1.0
-     * @return    TLC_Loader    Orchestrates the hooks of the plugin.
-     */
     public function get_loader() {
         return $this->loader;
     }
 
-    /**
-     * Retrieve the version number of the plugin.
-     *
-     * @since     0.1.0
-     * @return    string    The version number of the plugin.
-     */
     public function get_version() {
         return $this->version;
     }
 
-    /**
-     * Handles the AJAX request to send a visitor's message.
-     *
-     * @since 0.1.0
-     */
     public function handle_visitor_message() {
         global $wpdb;
 
@@ -568,54 +499,78 @@ class TLC_Plugin {
             return;
         }
 
-        // Sanitize inputs
-        $message_text = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
+        // Visitor token is needed early for rate limiting
         $visitor_token = isset( $_POST['visitor_token'] ) ? sanitize_text_field( $_POST['visitor_token'] ) : '';
-        $current_page = isset( $_POST['current_page'] ) ? esc_url_raw( $_POST['current_page'] ) : '';
-
-        if ( empty( $message_text ) || empty( $visitor_token ) ) {
-            wp_send_json_error( array( 'message' => __( 'Missing required fields (message or token).', 'telegram-live-chat' ) ), 400 );
+        if ( empty( $visitor_token ) ) {
+            wp_send_json_error( array( 'message' => __( 'Visitor token is required.', 'telegram-live-chat' ) ), 400 );
             return;
         }
 
-        // Get visitor IP and User Agent
+        // Rate Limiting Check
+        if ( get_option( TLC_PLUGIN_PREFIX . 'rate_limit_enable', true ) ) {
+            $threshold = (int) get_option( TLC_PLUGIN_PREFIX . 'rate_limit_threshold', 5 );
+            $period_seconds = (int) get_option( TLC_PLUGIN_PREFIX . 'rate_limit_period_seconds', 10 );
+            // Ensure period is at least 1 to prevent division by zero or overly aggressive limiting
+            $period_seconds = max(1, $period_seconds);
+            $transient_key = TLC_PLUGIN_PREFIX . 'rl_' . substr(md5($visitor_token), 0, 16); // Shorten key, md5 for consistency
+
+            $timestamps = get_transient( $transient_key );
+            if ( false === $timestamps || !is_array($timestamps) ) { // Ensure it's an array
+                $timestamps = array();
+            }
+
+            $current_time = time();
+            // Filter out timestamps older than the period
+            $timestamps = array_filter( $timestamps, function( $ts ) use ( $current_time, $period_seconds ) {
+                return is_numeric($ts) && ( $current_time - $ts ) < $period_seconds;
+            });
+
+            if ( count( $timestamps ) >= $threshold ) {
+                // Limit exceeded
+                wp_send_json_error( array( 'message' => __( 'You are sending messages too quickly. Please wait a moment.', 'telegram-live-chat' ) ), 429 ); // 429 Too Many Requests
+                return;
+            }
+
+            // Add current message timestamp and save
+            $timestamps[] = $current_time;
+            set_transient( $transient_key, $timestamps, $period_seconds + 5 ); // Expire transient slightly after period
+        }
+
+        // Sanitize other inputs
+        $message_text = isset( $_POST['message'] ) ? sanitize_textarea_field( wp_unslash( $_POST['message'] ) ) : '';
+        $current_page = isset( $_POST['current_page'] ) ? esc_url_raw( $_POST['current_page'] ) : '';
+
+        if ( empty( $message_text ) ) { // visitor_token already checked
+            wp_send_json_error( array( 'message' => __( 'Message text cannot be empty.', 'telegram-live-chat' ) ), 400 );
+            return;
+        }
+
         $visitor_ip = $this->get_visitor_ip();
         $visitor_user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ) : '';
-        $wp_user_id = get_current_user_id(); // Returns 0 if not logged in
+        $wp_user_id = get_current_user_id();
 
         $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
         $messages_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
 
-        // Find or create chat session
         $session = $wpdb->get_row( $wpdb->prepare(
             "SELECT session_id, status FROM $sessions_table WHERE visitor_token = %s",
             $visitor_token
         ) );
-
         $session_id = null;
 
         if ( $session ) {
             $session_id = $session->session_id;
-            // Update last_active_time and potentially status if closed/archived
             $update_data = array( 'last_active_time' => current_time( 'mysql' ) );
             if ($session->status === 'closed' || $session->status === 'archived') {
-                $update_data['status'] = 'active'; // Re-open session if user messages again
+                $update_data['status'] = 'active';
             }
-            $wpdb->update(
-                $sessions_table,
-                $update_data,
-                array( 'session_id' => $session_id )
-            );
+            $wpdb->update( $sessions_table, $update_data, array( 'session_id' => $session_id ) );
         } else {
             $insert_data = array(
-                'visitor_token' => $visitor_token,
-                'wp_user_id' => $wp_user_id > 0 ? $wp_user_id : null,
-                'start_time' => current_time( 'mysql' ),
-                'last_active_time' => current_time( 'mysql' ),
-                'status' => 'active',
-                'visitor_ip' => $visitor_ip,
-                'visitor_user_agent' => $visitor_user_agent,
-                'initial_page_url' => $current_page,
+                'visitor_token' => $visitor_token, 'wp_user_id' => $wp_user_id > 0 ? $wp_user_id : null,
+                'start_time' => current_time( 'mysql' ), 'last_active_time' => current_time( 'mysql' ),
+                'status' => 'active', 'visitor_ip' => $visitor_ip,
+                'visitor_user_agent' => $visitor_user_agent, 'initial_page_url' => $current_page,
             );
             $wpdb->insert( $sessions_table, $insert_data );
             $session_id = $wpdb->insert_id;
@@ -626,16 +581,10 @@ class TLC_Plugin {
             return;
         }
 
-        // Store the message
-        $message_inserted = $wpdb->insert(
-            $messages_table,
-            array(
-                'session_id' => $session_id,
-                'sender_type' => 'visitor',
-                'message_content' => $message_text,
-                'timestamp' => current_time( 'mysql' ),
-            )
-        );
+        $message_inserted = $wpdb->insert( $messages_table, array(
+            'session_id' => $session_id, 'sender_type' => 'visitor',
+            'message_content' => $message_text, 'timestamp' => current_time( 'mysql' ),
+        ));
 
         if ( ! $message_inserted ) {
             wp_send_json_error( array( 'message' => __( 'Could not store message.', 'telegram-live-chat' ) ), 500 );
@@ -643,12 +592,10 @@ class TLC_Plugin {
         }
         $message_id = $wpdb->insert_id;
 
-        // Forward to Telegram
         $bot_token = get_option( TLC_PLUGIN_PREFIX . 'bot_token' );
         $admin_user_ids_str = get_option( TLC_PLUGIN_PREFIX . 'admin_user_ids' );
 
         if ( empty( $bot_token ) || empty( $admin_user_ids_str ) ) {
-            // Not critical enough to send an error back to user, but log it.
             error_log(TLC_PLUGIN_PREFIX . 'Telegram settings (bot token or admin IDs) not configured. Message ID: ' . $message_id);
             wp_send_json_success( array( 'message' => __( 'Message received. Admin will be notified if configured.', 'telegram-live-chat' ), 'message_id' => $message_id ) );
             return;
@@ -656,15 +603,10 @@ class TLC_Plugin {
 
         $telegram_api = new TLC_Telegram_Bot_API( $bot_token );
         $admin_user_ids = array_map( 'trim', explode( ',', $admin_user_ids_str ) );
-
         $telegram_message = sprintf(
             __( "New chat message from visitor (Session: %s):\nPage: %s\n\n%s", 'telegram-live-chat' ),
-            $session_id, // Or visitor_token for more direct identification if needed
-            $current_page,
-            $message_text
+            $session_id, $current_page, $message_text
         );
-
-        // Add visitor details if available
         $visitor_details = "\n\nVisitor Info:\nIP: " . $visitor_ip;
         if ($wp_user_id > 0) {
             $user_info = get_userdata($wp_user_id);
@@ -674,113 +616,222 @@ class TLC_Plugin {
         }
         $telegram_message .= $visitor_details;
 
-
         $success_sending_to_all_admins = true;
         foreach ( $admin_user_ids as $admin_user_id ) {
             if ( ! is_numeric( $admin_user_id ) ) continue;
-            $response = $telegram_api->send_message( $admin_user_id, $telegram_message, 'HTML' ); // Or MarkdownV2
+            $response = $telegram_api->send_message( $admin_user_id, $telegram_message, 'HTML' );
             if ( is_wp_error( $response ) ) {
                 error_log( TLC_PLUGIN_PREFIX . 'Failed to send message to Telegram User ID ' . $admin_user_id . ': ' . $response->get_error_message() );
                 $success_sending_to_all_admins = false;
-            } else if (isset($response['result']['message_id'])) {
-                // Optionally store the Telegram message_id for this outgoing notification
             }
         }
 
         if ( ! $success_sending_to_all_admins ) {
-             // Still send success to user, as their message is stored. Admin notification is secondary.
             error_log(TLC_PLUGIN_PREFIX . 'One or more Telegram notifications failed for message ID: ' . $message_id);
         }
-
         wp_send_json_success( array( 'message' => __( 'Message sent!', 'telegram-live-chat' ), 'message_id' => $message_id, 'session_id' => $session_id ) );
     }
 
-    /**
-     * Get visitor IP address.
-     *
-     * @since 0.1.0
-     * @return string IP address.
-     */
     private function get_visitor_ip() {
         $ip = '';
         if ( ! empty( $_SERVER['HTTP_CLIENT_IP'] ) ) {
-            //check ip from share internet
             $ip = $_SERVER['HTTP_CLIENT_IP'];
         } elseif ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
-            //to check ip is pass from proxy
             $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
         } elseif ( ! empty( $_SERVER['REMOTE_ADDR'] ) ) {
             $ip = $_SERVER['REMOTE_ADDR'];
         }
-        // Strip port number from IP address
         if ( $ip && false !== strpos( $ip, ':' ) && substr_count( $ip, '.' ) === 3 ) {
             $ip = explode( ':', $ip )[0];
         }
         return sanitize_text_field($ip);
     }
 
-    /**
-     * Check if current time is within defined work hours.
-     * Uses WordPress timezone.
-     * @return bool True if within work hours or if work hours not configured/enabled properly, false otherwise.
-     */
     public function is_currently_within_work_hours() {
         $work_hours_data = get_option(TLC_PLUGIN_PREFIX . 'work_hours');
+        if (empty($work_hours_data) || !is_array($work_hours_data)) return true;
 
-        if (empty($work_hours_data) || !is_array($work_hours_data)) {
-            return true; // If not configured, assume always online
-        }
-
-        // Get current time in WordPress timezone
         $current_timestamp = current_time('timestamp');
-        $current_day_key = strtolower(wp_date('l', $current_timestamp)); // Monday, Tuesday...
-        $current_time_hm = wp_date('H:i', $current_timestamp); // HH:MM format
+        $current_day_key = strtolower(wp_date('l', $current_timestamp));
+        $current_time_hm = wp_date('H:i', $current_timestamp);
 
-        if (!isset($work_hours_data[$current_day_key])) {
-            return true; // Should not happen if defaults are set, but as a fallback
-        }
-
+        if (!isset($work_hours_data[$current_day_key])) return true;
         $day_settings = $work_hours_data[$current_day_key];
+        if (!isset($day_settings['is_open']) || $day_settings['is_open'] !== '1') return false;
 
-        if (!isset($day_settings['is_open']) || $day_settings['is_open'] !== '1') {
-            return false; // Closed today
-        }
-
-        $open_time = $day_settings['open'];  // HH:MM
-        $close_time = $day_settings['close']; // HH:MM
-
-        // Compare times
-        if ($current_time_hm >= $open_time && $current_time_hm < $close_time) {
-            // Special case: if close_time is past midnight (e.g. 02:00), it means it's open from open_time to midnight OR 00:00 to close_time on the next day.
-            // For simplicity, this implementation assumes close_time is on the same day and open_time < close_time.
-            // If open_time is '22:00' and close_time is '02:00', this simple check fails.
-            // A more robust check would convert HH:MM to minutes from midnight or handle overnight shifts.
-            // For now, assuming standard day shifts.
-            return true;
-        }
-
-        // Simplistic overnight check (if close time is "earlier" than open time, e.g. 22:00 - 02:00)
-        // This isn't perfect because it doesn't consider the day change for the close time.
-        // A truly robust solution involves comparing full datetime objects or minutes since week start.
-        // For this iteration, we'll stick to same-day comparison. If close_time < open_time, it means overnight.
-        // The current logic `current < close` would fail if `close` is e.g. `02:00` and `current` is `23:00`.
-        // Let's refine:
-        // If open_time < close_time (standard day shift, e.g., 09:00-17:00)
-        //    is_open = (current_time >= open_time && current_time < close_time)
-        // If open_time > close_time (overnight shift, e.g., 22:00-06:00)
-        //    is_open = (current_time >= open_time || current_time < close_time)
+        $open_time = $day_settings['open'];
+        $close_time = $day_settings['close'];
 
         if (strtotime($open_time) > strtotime($close_time)) { // Overnight shift
-            if ($current_time_hm >= $open_time || $current_time_hm < $close_time) {
-                return true;
-            }
+            if ($current_time_hm >= $open_time || $current_time_hm < $close_time) return true;
         } else { // Same day shift
-            if ($current_time_hm >= $open_time && $current_time_hm < $close_time) {
-                return true;
+            if ($current_time_hm >= $open_time && $current_time_hm < $close_time) return true;
+        }
+        return false;
+    }
+
+    public function handle_upload_chat_file() {
+        global $wpdb;
+
+        if ( ! function_exists( 'wp_handle_upload' ) ) {
+            require_once( ABSPATH . 'wp-admin/includes/file.php' );
+        }
+
+        if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( $_POST['nonce'] ), 'tlc_upload_chat_file_nonce' ) ) {
+            wp_send_json_error( array( 'message' => __( 'Nonce verification failed.', 'telegram-live-chat' ) ), 403 );
+            return;
+        }
+
+        if ( !get_option( TLC_PLUGIN_PREFIX . 'file_uploads_enable', false ) ) {
+            wp_send_json_error( array( 'message' => __( 'File uploads are disabled.', 'telegram-live-chat' ) ), 403 );
+            return;
+        }
+
+        if ( empty( $_FILES['chat_file'] ) ) {
+            wp_send_json_error( array( 'message' => __( 'No file uploaded.', 'telegram-live-chat' ) ), 400 );
+            return;
+        }
+
+        $file = $_FILES['chat_file'];
+        $visitor_token = isset( $_POST['visitor_token'] ) ? sanitize_text_field( $_POST['visitor_token'] ) : '';
+        $current_page = isset( $_POST['current_page'] ) ? esc_url_raw( $_POST['current_page'] ) : '';
+
+        if ( empty( $visitor_token ) ) {
+            wp_send_json_error( array( 'message' => __( 'Visitor token required.', 'telegram-live-chat' ) ), 400 );
+            return;
+        }
+
+        $max_size_mb = absint(get_option(TLC_PLUGIN_PREFIX . 'file_uploads_max_size_mb', 2));
+        $max_size_bytes = $max_size_mb * 1024 * 1024;
+        if ($file['size'] > $max_size_bytes) {
+            wp_send_json_error( array( 'message' => sprintf(__('File too large (max %d MB).', 'telegram-live-chat'), $max_size_mb) ), 400 );
+            return;
+        }
+
+        $allowed_types_str = get_option(TLC_PLUGIN_PREFIX . 'file_uploads_allowed_types', 'jpg,jpeg,png,gif,pdf,doc,docx,txt');
+        $mimes = false;
+        if (!empty($allowed_types_str)) {
+            $allowed_exts_normalized = array_map('trim', explode(',', strtolower($allowed_types_str)));
+            $mimes = array();
+            foreach ( $allowed_exts_normalized as $ext_normalized ) {
+                foreach ( get_allowed_mime_types() as $exts_patterns => $mime_type_val ) {
+                    if ( preg_match( '/\b' . preg_quote( $ext_normalized, '/' ) . '\b/i', $exts_patterns ) ) {
+                        $mimes[ $exts_patterns ] = $mime_type_val;
+                    }
+                }
+            }
+            if (empty($mimes) && $allowed_types_str !== '') {
+                 wp_send_json_error( array( 'message' => __( 'Invalid allowed file types configured.', 'telegram-live-chat' ) ), 400 );
+                 return;
             }
         }
 
+        $upload_dir_info = wp_upload_dir();
+        $tlc_upload_basedir = $upload_dir_info['basedir'] . '/tlc-chat-files';
+        $visitor_token_path_segment = sanitize_file_name($visitor_token);
+        $tlc_visitor_upload_path = $tlc_upload_basedir . '/' . $visitor_token_path_segment;
+        $tlc_visitor_upload_url = $upload_dir_info['baseurl'] . '/tlc-chat-files/' . $visitor_token_path_segment;
 
-        return false;
+        wp_mkdir_p( $tlc_visitor_upload_path );
+
+        $upload_overrides = array(
+            'test_form' => false,
+            'mimes'     => $mimes,
+            'unique_filename_callback' => function($dir, $name, $ext) {
+                return hash('sha1', sanitize_file_name($name) . microtime()) . $ext;
+            }
+        );
+
+        $custom_upload_dir_filter_func = function( $pathdata ) use ( $tlc_visitor_upload_path, $tlc_visitor_upload_url ) {
+            $pathdata['path'] = $tlc_visitor_upload_path;
+            $pathdata['url'] = $tlc_visitor_upload_url;
+            return $pathdata;
+        };
+        add_filter( 'upload_dir', $custom_upload_dir_filter_func );
+
+        $movefile = wp_handle_upload( $file, $upload_overrides );
+
+        remove_filter( 'upload_dir', $custom_upload_dir_filter_func );
+
+        if ( $movefile && ! isset( $movefile['error'] ) ) {
+            $file_url = $movefile['url'];
+            $file_path = $movefile['file'];
+            $original_filename = sanitize_file_name($file['name']);
+
+            $sessions_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_sessions';
+            $messages_table = $wpdb->prefix . TLC_PLUGIN_PREFIX . 'chat_messages';
+
+            $session_id = $wpdb->get_var( $wpdb->prepare("SELECT session_id FROM $sessions_table WHERE visitor_token = %s", $visitor_token) );
+            if (!$session_id) {
+                 $visitor_ip = $this->get_visitor_ip();
+                 $visitor_user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ) : '';
+                 $wp_user_id = get_current_user_id();
+                 $wpdb->insert( $sessions_table, array(
+                    'visitor_token' => $visitor_token, 'wp_user_id' => $wp_user_id > 0 ? $wp_user_id : null,
+                    'start_time' => current_time( 'mysql' ), 'last_active_time' => current_time( 'mysql' ),
+                    'status' => 'active', 'visitor_ip' => $visitor_ip,
+                    'visitor_user_agent' => $visitor_user_agent, 'initial_page_url' => $current_page,
+                ));
+                $session_id = $wpdb->insert_id;
+            } else {
+                 $wpdb->update( $sessions_table, array( 'last_active_time' => current_time( 'mysql' ) ), array( 'session_id' => $session_id ) );
+            }
+
+            if ( ! $session_id ) {
+                if (file_exists($file_path)) unlink($file_path);
+                wp_send_json_error( array( 'message' => __( 'Session error for file.', 'telegram-live-chat' ) ), 500 );
+                return;
+            }
+
+            $message_content = sprintf(__('File: [%1$s](%2$s)', 'telegram-live-chat'), $original_filename, $file_url);
+
+            $message_inserted = $wpdb->insert( $messages_table, array(
+                'session_id' => $session_id, 'sender_type' => 'visitor',
+                'message_content' => $message_content,
+                'timestamp' => current_time( 'mysql' ),
+            ));
+            $db_message_id = $wpdb->insert_id;
+
+            $bot_token_setting = get_option( TLC_PLUGIN_PREFIX . 'bot_token' );
+            $admin_user_ids_str = get_option( TLC_PLUGIN_PREFIX . 'admin_user_ids' );
+            $group_chat_id = get_option(TLC_PLUGIN_PREFIX . 'telegram_chat_id_group');
+
+            if ( !empty( $bot_token_setting ) && (!empty( $admin_user_ids_str ) || !empty($group_chat_id)) ) {
+                $telegram_api = new TLC_Telegram_Bot_API( $bot_token_setting );
+                $caption = sprintf( __( "File from visitor (Session: %s, File: %s)\nPage: %s\nURL (for admin reference): %s", 'telegram-live-chat' ),
+                    $session_id, $original_filename, $current_page, $file_url
+                );
+
+                $target_chat_ids = array();
+                if (!empty($admin_user_ids_str)) {
+                    $target_chat_ids = array_merge($target_chat_ids, array_map( 'trim', explode( ',', $admin_user_ids_str ) ));
+                }
+                if (!empty($group_chat_id) && tlc_is_numeric_or_at_sign_string($group_chat_id) ) {
+                    $target_chat_ids[] = $group_chat_id;
+                }
+                $target_chat_ids = array_unique(array_filter($target_chat_ids));
+
+
+                foreach ( $target_chat_ids as $chat_id ) {
+                    if (empty($chat_id)) continue;
+                    if (!is_numeric($chat_id) && strpos($chat_id, '@') !== 0) {
+                        error_log(TLC_PLUGIN_PREFIX . "Skipping invalid chat_id for file send: " . $chat_id);
+                        continue;
+                    }
+                    $telegram_api->send_document( $chat_id, $file_path, $caption, $original_filename );
+                }
+            }
+
+            wp_send_json_success( array( 'filename' => $original_filename, 'file_url' => $file_url, 'message_id' => $db_message_id ) );
+        } else {
+            wp_send_json_error( array( 'message' => $movefile['error'] ), 400 );
+        }
+        die();
+    }
+}
+
+if (!function_exists('tlc_is_numeric_or_at_sign_string')) {
+    function tlc_is_numeric_or_at_sign_string($value) {
+        return is_numeric($value) || (is_string($value) && strpos($value, '@') === 0);
     }
 }

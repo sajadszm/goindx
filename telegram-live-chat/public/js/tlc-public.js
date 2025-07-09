@@ -22,6 +22,10 @@
         const $messagesContainer = $('.tlc-chat-messages');
         const $messageInput = $('#tlc-chat-message-input');
         const $sendMessageButton = $('#tlc-send-message-button');
+        const $fileUploadButton = $('#tlc-file-upload-button');
+        const $fileInput = $('#tlc-chat-file-input');
+        const fileUploadSettings = tlc_public_ajax.file_upload_settings;
+
         let lastMessageIdDisplayed = 0; // Track the ID of the last message displayed
         let pollingIntervalId = null;
         const WIDGET_POLLING_INTERVAL = tlc_public_ajax.polling_interval || 5000;
@@ -281,6 +285,90 @@
 
         // Initialize Auto Message checks
         checkAndTriggerAutoMessage();
+
+        // File Upload Logic
+        if (fileUploadSettings && fileUploadSettings.enabled) {
+            $fileUploadButton.on('click', function() {
+                $fileInput.click(); // Trigger hidden file input
+            });
+
+            $fileInput.on('change', function(event) {
+                if (event.target.files && event.target.files.length > 0) {
+                    const file = event.target.files[0];
+                    uploadFile(file);
+                    $(this).val(''); // Reset file input to allow selecting the same file again
+                }
+            });
+        }
+
+        function uploadFile(file) {
+            // Validate file type
+            const allowedTypes = fileUploadSettings.allowed_types.split(',').map(type => type.trim().toLowerCase());
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            if (allowedTypes.length > 0 && !allowedTypes.includes(fileExtension) && !allowedTypes.includes('.' + fileExtension) ) {
+                 if (!allowedTypes.find(type => file.type.startsWith(type))) { // Check MIME type as fallback
+                    appendMessage(`File type not allowed: .${fileExtension}. Allowed types: ${fileUploadSettings.allowed_types}`, 'system');
+                    scrollToBottom();
+                    return;
+                 }
+            }
+
+            // Validate file size
+            const maxSizeInBytes = fileUploadSettings.max_size_mb * 1024 * 1024;
+            if (file.size > maxSizeInBytes) {
+                appendMessage(`File is too large: ${(file.size / 1024 / 1024).toFixed(2)} MB. Max size: ${fileUploadSettings.max_size_mb} MB.`, 'system');
+                scrollToBottom();
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'tlc_upload_chat_file');
+            formData.append('nonce', fileUploadSettings.upload_nonce);
+            formData.append('visitor_token', visitorToken);
+            formData.append('chat_file', file);
+            formData.append('current_page', window.location.href);
+
+
+            // Display temporary uploading message
+            const tempMessageId = 'temp-upload-' + Date.now();
+            appendMessage(`Uploading ${escapeHtml(file.name)}...`, 'system', tempMessageId); // Use ID to replace later
+            scrollToBottom();
+
+            // Disable send and upload buttons during upload
+            $sendMessageButton.prop('disabled', true);
+            $fileUploadButton.prop('disabled', true);
+
+
+            $.ajax({
+                url: tlc_public_ajax.ajax_url,
+                type: 'POST',
+                data: formData,
+                processData: false, // Don't process the files
+                contentType: false, // Set contentType to false as jQuery will tell the server its a query string request
+                success: function(response) {
+                    // Remove temporary message
+                    $messagesContainer.find(`[data-message-id="${tempMessageId}"]`).remove();
+
+                    if (response.success) {
+                        appendMessage(`File sent: ${escapeHtml(response.data.filename)}`, 'visitor', null, response.data.message_id);
+                    } else {
+                        appendMessage(`Error uploading file: ${escapeHtml(response.data.message || 'Unknown error')}`, 'system');
+                    }
+                    scrollToBottom();
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    $messagesContainer.find(`[data-message-id="${tempMessageId}"]`).remove();
+                    appendMessage(`Error uploading file: Network problem or server error.`, 'system');
+                    scrollToBottom();
+                    console.error('File upload AJAX error:', textStatus, errorThrown);
+                },
+                complete: function() {
+                    // Re-enable buttons
+                    $sendMessageButton.prop('disabled', false);
+                    $fileUploadButton.prop('disabled', false);
+                }
+            });
+        }
 
 
         // Utility to generate a simple UUID for visitor token
