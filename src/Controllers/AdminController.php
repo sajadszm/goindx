@@ -348,22 +348,33 @@ class AdminController {
     public function findAndShowUserManagementMenu(string $adminTelegramId, int $adminChatId, string $identifier) {
         if (!$this->isAdmin($adminTelegramId)) { return; }
         $this->updateUserState($adminTelegramId, null); // Clear state
+        error_log("Admin User Management: Searching for identifier '{$identifier}' by admin {$adminTelegramId}");
 
         $foundUser = null;
+        $searchMethod = "";
+
         if (ctype_digit($identifier)) {
+            $searchMethod = "by ActualOrHashedTelegramId (digits)";
+            error_log("Admin User Management: Attempting search using findUserByActualOrHashedTelegramId for '{$identifier}'");
             $foundUser = $this->userModel->findUserByActualOrHashedTelegramId($identifier);
         } elseif (strpos($identifier, '@') === 0) {
             $usernameToSearch = substr($identifier, 1);
+            $searchMethod = "by Username (with @)";
+            error_log("Admin User Management: Attempting search using findUserByUsername for '{$usernameToSearch}'");
             $foundUser = $this->userModel->findUserByUsername($usernameToSearch);
         } else {
-             // Try as username without @
+            // Try as username without @ first
+            $searchMethod = "by Username (no @) then by ActualOrHashedTelegramId";
+            error_log("Admin User Management: Attempting search using findUserByUsername for '{$identifier}'");
             $foundUser = $this->userModel->findUserByUsername($identifier);
-            if(!$foundUser){ // If still not found, try as if it was a numeric ID string
-                 $foundUser = $this->userModel->findUserByActualOrHashedTelegramId($identifier);
+            if(!$foundUser){
+                error_log("Admin User Management: Username search failed for '{$identifier}', trying by ActualOrHashedTelegramId");
+                $foundUser = $this->userModel->findUserByActualOrHashedTelegramId($identifier);
             }
         }
 
         if (!$foundUser) {
+            error_log("Admin User Management: User not found for identifier '{$identifier}' using method: {$searchMethod}");
             $this->telegramAPI->sendMessage($adminChatId, "کاربری با شناسه `{$identifier}` یافت نشد. لطفا دوباره تلاش کنید.", null, "Markdown");
             $this->promptFindUser($adminTelegramId, $adminChatId, null); // Show prompt again
             return;
@@ -476,12 +487,31 @@ class AdminController {
     // --- Zarinpal Transaction Listing (Admin) ---
     public function listZarinpalTransactions(string $telegramId, int $chatId, ?int $messageId, int $page = 0) {
         if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+        error_log("Admin: Attempting to list Zarinpal transactions. Page: {$page}");
 
-        $zarinpalService = new \Services\ZarinpalService();
+        try {
+            $zarinpalService = new \Services\ZarinpalService();
+        } catch (\Exception $e) {
+            error_log("Admin: Error instantiating ZarinpalService: " . $e->getMessage());
+            $this->telegramAPI->sendMessage($chatId, "خطا در بارگذاری سرویس پرداخت. لطفا تنظیمات را بررسی کنید.");
+            return;
+        }
+
         $perPage = 10;
         $offset = $page * $perPage;
 
-        $transactions = $zarinpalService->getAllTransactionsAdmin($perPage, $offset);
+        $transactions = [];
+        $totalTransactions = 0;
+        try {
+            $transactions = $zarinpalService->getAllTransactionsAdmin($perPage, $offset);
+            $totalTransactions = $zarinpalService->countAllTransactionsAdmin();
+            error_log("Admin: Fetched " . count($transactions) . " transactions for page {$page}. Total transactions: {$totalTransactions}");
+        } catch (\Exception $e) {
+            error_log("Admin: Error fetching transactions from ZarinpalService: " . $e->getMessage());
+            $this->telegramAPI->sendMessage($chatId, "خطا در دریافت لیست تراکنش‌ها از سرویس پرداخت.");
+            return;
+        }
+
         $totalTransactions = $zarinpalService->countAllTransactionsAdmin();
         $totalPages = ceil($totalTransactions / $perPage);
 
@@ -578,32 +608,58 @@ class AdminController {
         }
 
         $users = $this->userModel->getAllUsersForBroadcast();
+        error_log("Admin Broadcast: Fetched " . count($users) . " users for broadcast.");
+
         $sentCount = 0;
         $failedCount = 0;
         $blockedCount = 0;
+        $processedCount = 0;
 
         foreach ($users as $user) {
-            if (empty($user['encrypted_chat_id'])) continue;
+            $processedCount++;
+            if (empty($user['encrypted_chat_id'])) {
+                if ($processedCount <= 5) { // Log for first 5 users if chat_id is missing
+                    error_log("Admin Broadcast: User ID {$user['id']} has empty encrypted_chat_id. Skipping.");
+                }
+                continue;
+            }
+
             try {
                 $chatIdToSend = EncryptionHelper::decrypt($user['encrypted_chat_id']);
+                if ($processedCount <= 5) { // Log decryption result for first 5
+                    error_log("Admin Broadcast: User ID {$user['id']}, decrypted chat_id: {$chatIdToSend}. Attempting to send.");
+                }
+
                 $sendResult = $this->telegramAPI->sendMessage((int)$chatIdToSend, $messageText);
-                if ($sendResult && $sendResult['ok']) {
+
+                if ($processedCount <= 5) { // Log send result for first 5
+                    error_log("Admin Broadcast: Send result for user ID {$user['id']}: " . json_encode($sendResult));
+                }
+
+                if ($sendResult && isset($sendResult['ok']) && $sendResult['ok']) {
                     $sentCount++;
                 } else {
                     if (isset($sendResult['error_code']) && ($sendResult['error_code'] == 403 || $sendResult['error_code'] == 400)) {
                         $blockedCount++;
-                         // $this->userModel->updateUserByDBId($user['id'], ['is_bot_blocked' => 1]); // Assumes updateUserByDBId exists
+                        error_log("Admin Broadcast: User ID {$user['id']} (Chat ID: {$chatIdToSend}) likely blocked the bot. Error: " . ($sendResult['description'] ?? 'N/A'));
+                        // Consider marking user as blocked in DB here if is_bot_blocked column exists
+                        // $this->userModel->updateUserByDBId($user['id'], ['is_bot_blocked' => 1]);
                     } else {
                         $failedCount++;
+                        error_log("Admin Broadcast: Failed to send to user ID {$user['id']} (Chat ID: {$chatIdToSend}). Error: " . ($sendResult['description'] ?? 'Unknown error') . " Code: " . ($sendResult['error_code'] ?? 'N/A'));
                     }
-                    error_log("Broadcast failed for user ID {$user['id']}: " . ($sendResult['description'] ?? 'Unknown error'));
                 }
             } catch (\Exception $e) {
                 $failedCount++;
-                error_log("Broadcast exception for user ID {$user['id']}: " . $e->getMessage());
+                error_log("Admin Broadcast: Exception sending to user ID {$user['id']}. Message: " . $e->getMessage());
             }
-            if (($sentCount + $failedCount + $blockedCount) % 20 == 0) {
-                usleep(500000);
+
+            // Optional: Add a small delay to avoid hitting rate limits too hard, especially for large user bases.
+            // Adjust sleep time as needed. 1/10th of a second between messages for example.
+            if (($sentCount + $failedCount + $blockedCount) % 20 == 0) { // Original sleep condition
+                 usleep(500000); // 0.5 seconds
+            } else {
+                 usleep(100000); // 0.1 seconds for other messages
             }
         }
 

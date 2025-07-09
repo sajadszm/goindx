@@ -29,7 +29,10 @@ class SupportController {
      */
     public function userRequestSupportStart(string $telegramId, int $chatId, ?int $messageId = null) {
         $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
-        $this->userModel->updateUser($hashedTelegramId, ['user_state' => json_encode(['action' => 'awaiting_initial_support_message'])]);
+        $stateToSet = ['action' => 'awaiting_initial_support_message'];
+        $updateResult = $this->userModel->updateUser($hashedTelegramId, ['user_state' => json_encode($stateToSet)]);
+
+        error_log("SupportController::userRequestSupportStart - User: {$telegramId}, HashedID: {$hashedTelegramId}, State set to: " . json_encode($stateToSet) . ", Update result: " . ($updateResult ? 'Success' : 'Failed'));
 
         $text = "💬 شما در حال ارسال پیام به پشتیبانی هستید.\nلطفا پیام خود را بنویسید و ارسال کنید. پیام شما یک تیکت پشتیبانی جدید ایجاد خواهد کرد یا به تیکت باز فعلی شما اضافه می‌شود.\n\nبرای لغو، /cancel را ارسال کنید.";
 
@@ -44,10 +47,12 @@ class SupportController {
      * Handles a message from a user that is intended for the support system.
      */
     public function handleUserMessage(string $telegramId, int $chatId, string $messageText, string $firstName, ?string $username) {
+        error_log("SupportController::handleUserMessage - Received message '{$messageText}' from user {$telegramId} in chat {$chatId}");
         $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
         $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
 
         if (!$user || !isset($user['id'])) {
+            error_log("SupportController::handleUserMessage - User not found or ID missing for hashedId {$hashedTelegramId}");
             $this->telegramAPI->sendMessage($chatId, "خطا: اطلاعات کاربری شما برای ارسال پیام پشتیبانی یافت نشد.");
             return;
         }

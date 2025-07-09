@@ -1078,7 +1078,7 @@ class UserController {
         if (!isset($cycleInfo['avg_period_length']) || !isset($cycleInfo['avg_cycle_length'])) {
             $this->handleAskAverageLengths($telegramId, $chatId, null);
         } else {
-            error_log("UserController::handleCycleLogDate - Calling showMainMenu after cycle info fully updated for user {$telegramId}");
+            // error_log("UserController::handleCycleLogDate - Calling showMainMenu after cycle info fully updated for user {$telegramId}"); // Removed
             $this->showMainMenu($chatId, "اطلاعات دوره شما به‌روز شد.");
         }
     }
@@ -1151,7 +1151,7 @@ class UserController {
         $this->userModel->updateUser($hashedTelegramId, ['encrypted_cycle_info' => EncryptionHelper::encrypt(json_encode($cycleInfo))]);
 
         $this->telegramAPI->editMessageText($chatId, (int)$messageId, "میانگین طول چرخه شما: {$length} روز ثبت شد. ✅", null);
-        error_log("UserController::handleSetAverageCycleLength - Calling showMainMenu for user {$telegramId}");
+        // error_log("UserController::handleSetAverageCycleLength - Calling showMainMenu for user {$telegramId}"); // Removed
         $this->showMainMenu($chatId, "اطلاعات دوره شما تکمیل شد!");
     }
 
@@ -1178,7 +1178,7 @@ class UserController {
 
         } elseif ($type === 'cycle') {
             $this->telegramAPI->editMessageText($chatId, (int)$messageId, "ثبت میانگین طول چرخه رد شد.", null);
-            error_log("UserController::handleSkipAverageInfo (type cycle) - Calling showMainMenu for user {$telegramId}");
+            // error_log("UserController::handleSkipAverageInfo (type cycle) - Calling showMainMenu for user {$telegramId}"); // Removed
             $this->showMainMenu($chatId, "اطلاعات دوره شما به‌روز شد.");
         }
     }
@@ -1317,9 +1317,18 @@ class UserController {
         $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
         $userState = $this->userModel->getUserState($hashedTelegramId);
 
-        if (!$userState || !isset($userState['action']) || $userState['action'] !== 'logging_symptoms' || !isset($userState['data']['date']) || $userState['data']['date'] !== $dateOption || !isset($userState['data']['symptoms'])) {
-            $this->telegramAPI->editMessageText($chatId, (int)$messageId, "خطا: اطلاعاتی برای ذخیره یافت نشد یا وضعیت نامعتبر است.", null);
-            $this->handleLogSymptomStart($telegramId, $chatId, null, $dateOption);
+        error_log("handleSymptomSaveFinal: User {$telegramId}, DateOption: {$dateOption}, CurrentUserState: " . json_encode($userState));
+
+        if (!$userState ||
+            !isset($userState['action']) || $userState['action'] !== 'logging_symptoms' ||
+            !isset($userState['data']['date']) || $userState['data']['date'] !== $dateOption ||
+            !isset($userState['data']['symptoms'])
+           ) {
+            error_log("handleSymptomSaveFinal: State validation failed for user {$telegramId}. DateOption: {$dateOption}. Dumping state: " . json_encode($userState));
+            $this->telegramAPI->editMessageText($chatId, (int)$messageId, "خطا: اطلاعاتی برای ذخیره یافت نشد یا وضعیت نامعتبر است. لطفا دوباره از ابتدا تلاش کنید.", null);
+            // Do not call handleLogSymptomStart here as it might overwrite a partially valid state or confuse user.
+            // Let them go back to main menu or try symptom logging again from main menu.
+            $this->showMainMenu($chatId, "لطفا ثبت علائم را از منوی اصلی مجددا آغاز کنید.");
             return;
         }
 

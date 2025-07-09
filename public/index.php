@@ -73,16 +73,18 @@ try {
             $stateAction = null;
             $stateData = [];
 
-            if ($currentUserStateInfo) { // $currentUserStateInfo can be string or array from getUserState
+            if ($currentUserStateInfo) {
                 if(is_array($currentUserStateInfo) && isset($currentUserStateInfo['action'])) {
                     $stateAction = $currentUserStateInfo['action'];
-                    $stateData = $currentUserStateInfo; // Pass full state info
+                    $stateData = $currentUserStateInfo;
                 } elseif (is_string($currentUserStateInfo)) {
-                    $stateAction = $currentUserStateInfo; // Old simple string state
+                    $stateAction = $currentUserStateInfo;
                 }
             }
+            error_log("index.php - Text message from UserID: {$userId}, HashedID: {$hashedTelegramId}. Detected StateAction: " . ($stateAction ?? 'NULL') . ". Full State: " . json_encode($currentUserStateInfo));
 
             if ($text === '/cancel') {
+                error_log("index.php - Handling /cancel for user {$userId}. Clearing state.");
                 $userModel->updateUser($hashedTelegramId, ['user_state' => null]);
                 $telegramAPI->sendMessage($chatId, "عملیات لغو شد.");
                 // Determine where to go back based on state if needed
