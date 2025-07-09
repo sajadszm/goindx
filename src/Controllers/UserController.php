@@ -3,26 +3,26 @@
 namespace Controllers;
 
 use Models\UserModel;
-use Models\SymptomModel; // Added for symptom logging
-use Models\EducationalContentModel; // For tutorials
-use Models\SubscriptionPlanModel; // For subscriptions
-use Models\AppSettingsModel; // For About Us
+use Models\SymptomModel;
+use Models\EducationalContentModel;
+use Models\SubscriptionPlanModel;
+use Models\AppSettingsModel;
+use Models\PeriodHistoryModel;
 use Telegram\TelegramAPI;
 use Helpers\EncryptionHelper;
-use Services\CycleService; // For cycle calculations
+use Services\CycleService;
 
 class UserController {
     private $userModel;
     private $telegramAPI;
     private $symptomsConfig;
     private $symptomModel;
-    private $periodHistoryModel; // Added
+    private $periodHistoryModel;
 
     public function __construct(TelegramAPI $telegramAPI) {
         $this->userModel = new UserModel();
         $this->telegramAPI = $telegramAPI;
-        $this->periodHistoryModel = new \Models\PeriodHistoryModel(); // Added
-        // Symptom model and config are loaded on demand now
+        $this->periodHistoryModel = new PeriodHistoryModel();
     }
 
     private function loadSymptomsConfig() {
@@ -64,7 +64,7 @@ class UserController {
             ]];
             $this->telegramAPI->sendMessage($chatId, $welcomeMessage, $keyboard);
         } else {
-            $this->userModel->updateUser($hashedTelegramId, ['user_state' => null]); // Clear state on /start
+            $this->userModel->updateUser($hashedTelegramId, ['user_state' => null]);
             $this->telegramAPI->sendMessage($chatId, "سلام مجدد {$firstName}! خوشحالیم که دوباره شما را می‌بینیم. 😊");
             $this->showMainMenu($chatId);
         }
@@ -227,12 +227,12 @@ class UserController {
                 if ($expiryDate > new \DateTime()) $showSubscriptionButton = false;
             } catch (\Exception $e) { /* keep true if date is invalid */ }
         }
+
         if ($showSubscriptionButton && isset($user['subscription_status']) && $user['subscription_status'] === 'free_trial' && !empty($user['trial_ends_at'])){
              try {
                 $trialEndDate = new \DateTime($user['trial_ends_at']);
                 if($trialEndDate > new \DateTime()){
-                     // User is on active free trial, don't show "Buy Subscription" unless they want to override.
-                     // For now, we hide it. If they want to buy during trial, they can be guided by support or future "manage subscription"
+                     // User is on active free trial, still show buy button if they want to buy early or see options.
                 }
             } catch (\Exception $e) {}
         }
@@ -289,7 +289,10 @@ class UserController {
             $action_buttons[] = ['text' => "کد معرف دارم", 'callback_data' => 'user_enter_referral_code_prompt'];
         }
         $action_buttons[] = ['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show'];
-        $buttons_rows[] = $action_buttons; // Put these on one row if possible, or they will be single
+        if(!empty($action_buttons)) {
+            if(count($action_buttons) == 2) $buttons_rows[] = $action_buttons;
+            else foreach($action_buttons as $btn) $buttons_rows[] = [$btn];
+        }
 
         $keyboard = ['inline_keyboard' => $buttons_rows];
 
@@ -497,7 +500,17 @@ class UserController {
         }
 
         $text = "📄 **{$article['title']}**\n\n";
-        $text .= ($article['content_data'] ? EncryptionHelper::decrypt($article['content_data']) : "محتوایی برای نمایش وجود ندارد.") . "\n";
+        $articleContent = "محتوایی برای نمایش وجود ندارد.";
+        if ($article['content_data']) {
+            try {
+                $articleContent = EncryptionHelper::decrypt($article['content_data']);
+            } catch (\Exception $e) {
+                error_log("Failed to decrypt article content ID {$articleId}: " . $e->getMessage());
+                $articleContent = "[خطا در نمایش محتوا]";
+            }
+        }
+        $text .= $articleContent . "\n";
+
         if (!empty($article['source_url'])) $text .= "\nمنبع: {$article['source_url']}\n";
 
         $buttons = [];
@@ -625,19 +638,12 @@ class UserController {
     }
 
     public function handleSupportRequestStart(string $telegramId, int $chatId, ?int $messageId = null) {
-        // This method will now be handled by SupportController
-        // For now, ensure this method is not directly called or update public/index.php to route to SupportController
         error_log("UserController::handleSupportRequestStart called - SHOULD BE ROUTED TO SupportController");
         $supportController = new SupportController($this->telegramAPI, new \Models\SupportTicketModel(), $this->userModel);
         $supportController->userRequestSupportStart($telegramId, $chatId, $messageId);
     }
 
-    /**
-     * Handles messages from users that are intended for the support system.
-     * This method will now be handled by SupportController
-     */
     public function handleUserSupportMessage($telegramUserId, int $chatId, string $messageText, string $firstName, ?string $username) {
-        // This method will now be handled by SupportController
         error_log("UserController::handleUserSupportMessage called - SHOULD BE ROUTED TO SupportController");
         $supportController = new SupportController($this->telegramAPI, new \Models\SupportTicketModel(), $this->userModel);
         $supportController->handleUserMessage($telegramUserId, $chatId, $messageText, $firstName, $username);
@@ -711,8 +717,212 @@ class UserController {
         $this->showMainMenu($chatId, "به منوی اصلی بازگشتید.");
     }
 
-    // ... (All other methods from handleGenerateInvitation to handleDeleteAccountConfirm remain the same as the last fully correct version) ...
-    // ... including the fully restored cycle logging and symptom logging methods ...
+    public function handleGenerateInvitation($telegramId, $chatId, $messageIdToEdit = null) {
+        $hashedTelegramId = EncryptionHelper::hashIdentifier((string)$telegramId);
+
+        if (!$this->checkSubscriptionAccess($hashedTelegramId)) {
+            $this->promptToSubscribe($chatId, $messageIdToEdit, "قابلیت دعوت از همراه");
+            return;
+        }
+
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+
+        if (!$user) {
+            $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد.");
+            return;
+        }
+        if (!empty($user['partner_telegram_id_hash'])) {
+            $message = "شما در حال حاضر یک همراه متصل دارید. برای دعوت از فرد جدید، ابتدا باید اتصال فعلی را قطع کنید.";
+            $keyboard = ['inline_keyboard' => [[['text' => "🔙 بازگشت", 'callback_data' => 'main_menu_show']]]];
+            if ($messageIdToEdit) $this->telegramAPI->editMessageText($chatId, (int)$messageIdToEdit, $message, $keyboard);
+            else $this->telegramAPI->sendMessage($chatId, $message, $keyboard);
+            return;
+        }
+
+        $token = $this->userModel->generateInvitationToken($hashedTelegramId);
+
+        if ($token) {
+            $botUsername = $this->getBotUsername();
+            $invitationLink = "https://t.me/{$botUsername}?start=invite_{$token}";
+            $message = "لینک دعوت برای همراه شما ایجاد شد:\n\n{$invitationLink}\n\nاین لینک را کپی کرده و برای فرد مورد نظر ارسال کنید. این لینک یکبار مصرف است و پس از استفاده یا ساخت لینک جدید، باطل می‌شود.\n\nهمچنین همراه شما می‌تواند کد زیر را مستقیما در ربات وارد کند (از طریق دکمه پذیرش دعوتنامه):\n`{$token}`";
+            $this->telegramAPI->sendMessage($chatId, $message, null, 'Markdown');
+            $this->showMainMenu($chatId, "لینک دعوت ارسال شد. منوی اصلی:");
+            return;
+        } else {
+            $this->telegramAPI->sendMessage($chatId, "متاسفانه مشکلی در ایجاد لینک دعوت پیش آمد. لطفا دوباره تلاش کنید.");
+        }
+        $this->showMainMenu($chatId);
+    }
+
+    public function handleCancelInvitation($telegramId, $chatId, $messageId = null) {
+        $hashedTelegramId = EncryptionHelper::hashIdentifier((string)$telegramId);
+        $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+
+        if ($user && !empty($user['invitation_token'])) {
+            $updated = $this->userModel->updateUser($hashedTelegramId, ['invitation_token' => null]);
+            if ($updated) {
+                $text = "دعوتنامه شما با موفقیت لغو شد.";
+                if ($messageId) $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, null);
+                else $this->telegramAPI->sendMessage($chatId, $text, null);
+            } else {
+                $text = "مشکلی در لغو دعوتنامه رخ داد.";
+                 if ($messageId) $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, null);
+                else $this->telegramAPI->sendMessage($chatId, $text, null);
+            }
+        } else {
+            $text = "دعوتنامه‌ای برای لغو وجود نداشت.";
+            if ($messageId) $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, null);
+            else $this->telegramAPI->sendMessage($chatId, $text, null);
+        }
+        $this->showMainMenu($chatId);
+    }
+
+    public function handleAcceptInvitationPrompt($telegramId, int $chatId) {
+        $this->telegramAPI->sendMessage($chatId, "لطفا کد دعوتی که از همراه خود دریافت کرده‌اید را ارسال کنید, یا از طریق لینکی که همراهتان فرستاده اقدام کنید.");
+    }
+
+    public function handleAcceptInvitationCommand(string $telegramId, int $chatId, string $firstName, ?string $username, string $token) {
+        $accepterHashedId = EncryptionHelper::hashIdentifier($telegramId);
+        $accepterUser = $this->userModel->findUserByTelegramId($accepterHashedId);
+
+        if ($accepterUser) {
+            if (!$this->checkSubscriptionAccess($accepterHashedId)) {
+                $this->promptToSubscribe($chatId, null, "قابلیت اتصال به همراه");
+                return;
+            }
+        } else {
+            $this->userModel->createUser($accepterHashedId, (string)$chatId, $firstName, $username);
+            $accepterUser = $this->userModel->findUserByTelegramId($accepterHashedId);
+            if (!$accepterUser) {
+                 $this->telegramAPI->sendMessage($chatId, "خطا در پردازش اطلاعات شما. لطفا ربات را مجددا با /start آغاز کنید و سپس تلاش کنید.");
+                 return;
+            }
+        }
+
+        if (!empty($accepterUser['partner_telegram_id_hash'])) {
+            $this->telegramAPI->sendMessage($chatId, "شما در حال حاضر یک همراه متصل دارید. برای پذیرش این دعوت، ابتدا باید اتصال فعلی خود را قطع کنید.");
+            $this->showMainMenu($chatId);
+            return;
+        }
+
+        $inviterUser = $this->userModel->findUserByInvitationToken($token);
+
+        if (!$inviterUser) {
+            $this->telegramAPI->sendMessage($chatId, "کد دعوت نامعتبر است یا منقضی شده.");
+            $this->showMainMenu($chatId);
+            return;
+        }
+
+        $inviterHashedId = $inviterUser['telegram_id_hash'];
+        $inviterFirstName = "همراه شما";
+         if (!empty($inviterUser['encrypted_first_name'])) {
+            try {
+                $inviterFirstName = EncryptionHelper::decrypt($inviterUser['encrypted_first_name']);
+            } catch (\Exception $e) { error_log("Failed to decrypt inviter name: " . $e->getMessage()); }
+        }
+
+        if ($inviterHashedId === $accepterHashedId) {
+            $this->telegramAPI->sendMessage($chatId, "شما نمی‌توانید خودتان را به عنوان همراه دعوت کنید.");
+            $this->showMainMenu($chatId);
+            return;
+        }
+
+        if ($this->userModel->linkPartners($inviterHashedId, $accepterHashedId)) {
+            $this->telegramAPI->sendMessage($chatId, "شما با موفقیت به {$inviterFirstName} متصل شدید! 🎉");
+
+            if (!empty($inviterUser['encrypted_chat_id'])) {
+                try {
+                    $inviterChatId = EncryptionHelper::decrypt($inviterUser['encrypted_chat_id']);
+                    $accepterDisplayName = $firstName . ($username ? " (@{$username})" : "");
+                    $this->telegramAPI->sendMessage((int)$inviterChatId, "{$accepterDisplayName} دعوت شما را پذیرفت و به شما متصل شد! 🎉");
+                } catch (\Exception $e) {
+                    error_log("Failed to decrypt inviter's chat_id or notify: " . $e->getMessage());
+                }
+            }
+
+            if (empty($accepterUser['encrypted_role'])) {
+                 $welcomeMessage = "عالی! اتصال شما برقرار شد. حالا لطفا نقش خود را در این همراهی مشخص کنید:";
+                $keyboard = [
+                    'inline_keyboard' => [
+                        [['text' => "🩸 من پریود می‌شوم", 'callback_data' => 'select_role:menstruating']],
+                        [['text' => "🤝 همراه هستم", 'callback_data' => 'select_role:partner']],
+                        [['text' => "🚫 ترجیح می‌دهم نگویم", 'callback_data' => 'select_role:prefer_not_to_say']]
+                    ]
+                ];
+                $this->telegramAPI->sendMessage($chatId, $welcomeMessage, $keyboard);
+            } else {
+                $this->showMainMenu($chatId);
+            }
+        } else {
+            $this->telegramAPI->sendMessage($chatId, "متاسفانه مشکلی در اتصال به همراه پیش آمد. ممکن است {$inviterFirstName} دیگر این دعوت را لغو کرده باشد یا همزمان با فرد دیگری متصل شده باشد. لطفا دوباره تلاش کنید یا از همراهتان بخواهید لینک جدیدی ارسال کند.");
+            $this->showMainMenu($chatId);
+        }
+    }
+
+    public function handleDisconnectPartner($telegramId, $chatId) {
+        $userHashedId = EncryptionHelper::hashIdentifier((string)$telegramId);
+        $user = $this->userModel->findUserByTelegramId($userHashedId);
+
+        if (!$user || empty($user['partner_telegram_id_hash'])) {
+            $this->telegramAPI->sendMessage($chatId, "شما در حال حاضر به هیچ همراهی متصل نیستید.");
+            $this->showMainMenu($chatId);
+            return;
+        }
+
+        $partnerFirstName = "همراهتان";
+        $partnerUser = $this->userModel->findUserByTelegramId($user['partner_telegram_id_hash']);
+        if ($partnerUser && !empty($partnerUser['encrypted_first_name'])) {
+            try {
+                $partnerFirstName = EncryptionHelper::decrypt($partnerUser['encrypted_first_name']);
+            } catch (\Exception $e) { error_log("Failed to decrypt partner name for disconnect: " . $e->getMessage());}
+        }
+
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => "✅ بله، مطمئنم", 'callback_data' => 'partner_disconnect_confirm'],
+                    ['text' => "❌ خیر، منصرف شدم", 'callback_data' => 'main_menu_show'],
+                ]
+            ]
+        ];
+        $this->telegramAPI->sendMessage($chatId, "آیا مطمئن هستید که می‌خواهید از {$partnerFirstName} جدا شوید؟", $keyboard);
+    }
+
+    public function handleDisconnectPartnerConfirm($telegramId, $chatId, $messageId) {
+        $userHashedId = EncryptionHelper::hashIdentifier((string)$telegramId);
+        $user = $this->userModel->findUserByTelegramId($userHashedId);
+
+        if (!$user || empty($user['partner_telegram_id_hash'])) {
+            $this->telegramAPI->editMessageText($chatId, (int)$messageId, "شما به همراهی متصل نبودید.");
+            $this->showMainMenu($chatId);
+            return;
+        }
+
+        $partnerHashedId = $user['partner_telegram_id_hash'];
+        $partnerUserDB = $this->userModel->findUserByTelegramId($partnerHashedId);
+        $partnerFirstName = "همراهتان";
+         if ($partnerUserDB && !empty($partnerUserDB['encrypted_first_name'])) {
+            try {
+                $partnerFirstName = EncryptionHelper::decrypt($partnerUserDB['encrypted_first_name']);
+            } catch (\Exception $e) { error_log("Failed to decrypt partner name for disconnect confirm: " . $e->getMessage());}
+        }
+        $userFirstName = "[همراه شما]";
+        try{ if(!empty($user['encrypted_first_name'])) $userFirstName = EncryptionHelper::decrypt($user['encrypted_first_name']); } catch(\Exception $e){}
+
+
+        if ($this->userModel->unlinkPartners($userHashedId, $partnerHashedId)) {
+            $this->telegramAPI->editMessageText($chatId, (int)$messageId, "اتصال شما از {$partnerFirstName} با موفقیت قطع شد.");
+            if ($partnerUserDB && !empty($partnerUserDB['encrypted_chat_id'])) {
+                try {
+                    $partnerChatId = EncryptionHelper::decrypt($partnerUserDB['encrypted_chat_id']);
+                    $this->telegramAPI->sendMessage((int)$partnerChatId, "{$userFirstName} اتصالش را با شما قطع کرد.");
+                } catch (\Exception $e) { error_log("Failed to notify ex-partner about disconnection: " . $e->getMessage());}
+            }
+        } else {
+            $this->telegramAPI->editMessageText($chatId, (int)$messageId, "مشکلی در قطع اتصال پیش آمد. لطفا دوباره تلاش کنید.");
+        }
+        $this->showMainMenu($chatId);
+    }
 
 // --------- CYCLE LOGGING METHODS START ---------
     public function handleLogPeriodStartPrompt($telegramId, $chatId, $messageId = null) {
@@ -827,6 +1037,11 @@ class UserController {
 
         $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
         $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
+        if (!$user || !isset($user['id'])) { // Ensure user and user_id exist
+             $this->telegramAPI->editMessageText($chatId, (int)$messageId, "خطا: اطلاعات کاربر یافت نشد.", null);
+             $this->showMainMenu($chatId);
+             return;
+        }
         $cycleInfo = $user && !empty($user['encrypted_cycle_info']) ? json_decode(EncryptionHelper::decrypt($user['encrypted_cycle_info']), true) : [];
 
         if (!isset($cycleInfo['period_start_dates'])) $cycleInfo['period_start_dates'] = [];
@@ -844,11 +1059,8 @@ class UserController {
 
         $this->userModel->updateUser($hashedTelegramId, ['encrypted_cycle_info' => EncryptionHelper::encrypt(json_encode($cycleInfo))]);
 
-        // Log to period_history table
         $dbUserId = $user['id'];
         $cycleLength = null;
-        // Calculate cycle length based on the new period_start_dates array from $cycleInfo
-        // $cycleInfo['period_start_dates'] is already sorted descending
         if (count($cycleInfo['period_start_dates']) >= 2) {
             $currentPeriodStartDate = new \DateTime($cycleInfo['period_start_dates'][0]);
             $previousPeriodStartDate = new \DateTime($cycleInfo['period_start_dates'][1]);
@@ -856,7 +1068,6 @@ class UserController {
             $cycleLength = $interval->days;
         }
         $this->periodHistoryModel->logPeriodStart($dbUserId, $selectedDate->format('Y-m-d'), $cycleLength);
-        // End logging to period_history
 
         $this->telegramAPI->editMessageText($chatId, (int)$messageId, "تاریخ شروع آخرین پریود شما: {$selectedDate->format('Y-m-d')} ثبت شد. ✅", null);
 
@@ -964,9 +1175,9 @@ class UserController {
             $this->showMainMenu($chatId, "اطلاعات دوره شما به‌روز شد.");
         }
     }
-    // --------- CYCLE LOGGING METHODS END -----------
+// --------- CYCLE LOGGING METHODS END -----------
 
-    // --------- SYMPTOM LOGGING METHODS START -----------
+// --------- SYMPTOM LOGGING METHODS START -----------
     public function handleLogSymptomStart($telegramId, $chatId, $messageId = null, $dateOption = 'today') {
         error_log("handleLogSymptomStart called by user: {$telegramId} in chat: {$chatId} for date: {$dateOption}");
         if (!$this->checkSubscriptionAccess(EncryptionHelper::hashIdentifier($telegramId))) {
@@ -1146,9 +1357,9 @@ class UserController {
         }
         $this->showMainMenu($chatId, "به منوی اصلی بازگشتید.");
     }
-    // --------- SYMPTOM LOGGING METHODS END -----------
+// --------- SYMPTOM LOGGING METHODS END -----------
 
-    // --------- SUBSCRIPTION METHODS START -----------
+// --------- SUBSCRIPTION METHODS START -----------
     public function handleSubscribePlan($telegramId, $chatId, $messageId, $planId) {
         $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
         $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
@@ -1176,9 +1387,9 @@ class UserController {
             $this->telegramAPI->editMessageText($chatId, (int)$messageId, "متاسفانه مشکلی در ایجاد لینک پرداخت پیش آمد: {$errorMsg} \nلطفا بعدا تلاش کنید.", null);
         }
     }
-    // --------- SUBSCRIPTION METHODS END -----------
+// --------- SUBSCRIPTION METHODS END -----------
 
-    // --------- ACCESS CONTROL START -----------
+// --------- ACCESS CONTROL START -----------
     private function checkSubscriptionAccess(string $hashedTelegramId): bool {
         $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
         if (!$user) {
@@ -1199,7 +1410,7 @@ class UserController {
                     error_log("Error checking active subscription date for user {$user['id']}: " . $e->getMessage());
                     return false;
                 }
-            } else {
+            } else { // Active subscription with no end date (e.g. lifetime)
                  return true;
             }
         }
@@ -1216,7 +1427,7 @@ class UserController {
                     error_log("Error checking free trial date for user {$user['id']}: " . $e->getMessage());
                     return false;
                 }
-            } else {
+            } else { // free_trial status but no end date - this is inconsistent
                 error_log("checkSubscriptionAccess: User {$user['id']} has 'free_trial' status but no trial_ends_at date.");
             }
         }
@@ -1239,9 +1450,9 @@ class UserController {
             $this->telegramAPI->sendMessage($chatId, $text, $keyboard);
         }
     }
-    // --------- ACCESS CONTROL END -----------
+// --------- ACCESS CONTROL END -----------
 
-    // --- DELETE ACCOUNT ---
+// --- DELETE ACCOUNT ---
     public function handleDeleteAccountPrompt(string $telegramId, int $chatId, ?int $messageId = null) {
         $text = "⚠️ **تایید حذف حساب کاربری** ⚠️\n\n";
         $text .= "آیا مطمئن هستید که می‌خواهید حساب کاربری خود را برای همیشه حذف کنید؟\n";
@@ -1310,9 +1521,9 @@ class UserController {
             }
         }
     }
-    // --- END DELETE ACCOUNT ---
+// --- END DELETE ACCOUNT ---
 
-    // --- USER HISTORY SECTION ---
+// --- USER HISTORY SECTION ---
     public function handleShowHistoryMenu(string $telegramId, int $chatId, ?int $messageId = null) {
         error_log("handleShowHistoryMenu called by user: {$telegramId} in chat: {$chatId}");
         $hashedTelegramId = EncryptionHelper::hashIdentifier($telegramId);
@@ -1322,12 +1533,23 @@ class UserController {
         }
 
         $text = "📜 **تاریخچه من**\n\nکدام بخش از تاریخچه خود را مایل به مشاهده هستید؟";
-        $buttons = [
-            [['text' => "📅 تاریخچه دوره‌های پریود", 'callback_data' => 'user_history_periods:0']], // Page 0
-            [['text' => "📝 تاریخچه علائم ثبت شده", 'callback_data' => 'user_history_symptoms:0']], // Page 0
-            [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']]
+        $buttons_flat = [ // Changed to flat for easier grouping
+            ['text' => "📅 تاریخچه دوره‌های پریود", 'callback_data' => 'user_history_periods:0'],
+            ['text' => "📝 تاریخچه علائم ثبت شده", 'callback_data' => 'user_history_symptoms:0']
         ];
-        $keyboard = ['inline_keyboard' => $buttons];
+
+        $grouped_buttons = [];
+        for ($i = 0; $i < count($buttons_flat); $i += 2) {
+            $row = [$buttons_flat[$i]];
+            if (isset($buttons_flat[$i+1])) {
+                $row[] = $buttons_flat[$i+1];
+            }
+            $grouped_buttons[] = $row;
+        }
+        $grouped_buttons[] = [['text' => "🔙 بازگشت به منوی اصلی", 'callback_data' => 'main_menu_show']];
+
+
+        $keyboard = ['inline_keyboard' => $grouped_buttons];
 
         if ($messageId) {
             $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
@@ -1344,23 +1566,23 @@ class UserController {
             return;
         }
         $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
-        if (!$user) {
+        if (!$user || !isset($user['id'])) {
             $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد.");
             return;
         }
 
-        $perPage = 5; // Number of entries per page
+        $perPage = 5;
         $offset = $page * $perPage;
         $historyEntries = $this->periodHistoryModel->getPeriodHistory($user['id'], $perPage, $offset);
         $totalEntries = $this->periodHistoryModel->countPeriodHistory($user['id']);
-        $totalPages = ceil($totalEntries / $perPage);
+        $totalPages = $totalEntries > 0 ? ceil($totalEntries / $perPage) : 1;
 
         $text = "📅 **تاریخچه دوره‌های پریود شما** (صفحه " . ($page + 1) . " از {$totalPages})\n\n";
         if (empty($historyEntries)) {
             $text .= "هنوز هیچ تاریخچه پریودی برای شما ثبت نشده است.";
         } else {
             foreach ($historyEntries as $entry) {
-                $text .= "เริ่ม: " . $entry['period_start_date'];
+                $text .= "شروع: " . $entry['period_start_date'];
                 if ($entry['period_end_date']) {
                     $text .= " | پایان: " . $entry['period_end_date'];
                     if ($entry['period_length']) $text .= " (مدت: {$entry['period_length']} روز)";
@@ -1374,21 +1596,21 @@ class UserController {
             }
         }
 
-        $paginationButtons = [];
+        $paginationButtonsRow = [];
         if ($page > 0) {
-            $paginationButtons[] = ['text' => '⬅️ قبلی', 'callback_data' => 'user_history_periods:' . ($page - 1)];
+            $paginationButtonsRow[] = ['text' => '⬅️ قبلی', 'callback_data' => 'user_history_periods:' . ($page - 1)];
         }
         if (($page + 1) < $totalPages) {
-            $paginationButtons[] = ['text' => '➡️ بعدی', 'callback_data' => 'user_history_periods:' . ($page + 1)];
+            $paginationButtonsRow[] = ['text' => '➡️ بعدی', 'callback_data' => 'user_history_periods:' . ($page + 1)];
         }
 
-        $buttons = [];
-        if (!empty($paginationButtons)) {
-            $buttons[] = $paginationButtons;
+        $actionButtons = [];
+        if (!empty($paginationButtonsRow)) {
+            $actionButtons[] = $paginationButtonsRow;
         }
-        $buttons[] = [['text' => "🔙 بازگشت به منوی تاریخچه", 'callback_data' => 'user_show_history_menu']];
-        $buttons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
-        $keyboard = ['inline_keyboard' => $buttons];
+        $actionButtons[] = [['text' => "🔙 بازگشت به منوی تاریخچه", 'callback_data' => 'user_show_history_menu']];
+        $actionButtons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
+        $keyboard = ['inline_keyboard' => $actionButtons];
 
         if ($messageId) $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
         else $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
@@ -1402,20 +1624,18 @@ class UserController {
             return;
         }
         $user = $this->userModel->findUserByTelegramId($hashedTelegramId);
-        if (!$user) {
+        if (!$user || !isset($user['id'])) {
             $this->telegramAPI->sendMessage($chatId, "خطا: کاربر یافت نشد.");
             return;
         }
 
         $symptomModel = $this->getSymptomModel();
-        $perPage = 10; // Entries per page (e.g., 10 days of logs)
+        $perPage = 5; // Show 5 dates per page for symptoms
         $offset = $page * $perPage;
 
-        // For simplicity, let's fetch distinct dates with logs first for pagination
-        // A more advanced version might allow filtering by date range or symptom
         $loggedDates = $symptomModel->getDistinctLoggedDates($user['id'], $perPage, $offset);
         $totalLoggedDatesCount = $symptomModel->countDistinctLoggedDates($user['id']);
-        $totalPages = ceil($totalLoggedDatesCount / $perPage);
+        $totalPages = $totalLoggedDatesCount > 0 ? ceil($totalLoggedDatesCount / $perPage) : 1;
 
         $text = "📝 **تاریخچه علائم ثبت شده شما** (صفحه " . ($page + 1) . " از {$totalPages})\n\n";
 
@@ -1427,7 +1647,7 @@ class UserController {
                 $text .= "🗓️ **تاریخ: {$logDate}**\n";
                 $symptomsOnDate = $symptomModel->getSymptomsForDate($user['id'], $logDate);
                 if (empty($symptomsOnDate)) {
-                    $text .= "  - علامتی برای این روز ثبت نشده (این نباید اتفاق بیفتد اگر تاریخ از distinct گرفته شده).\n";
+                    $text .= "  - (خطای داخلی: علامتی برای این تاریخ یافت نشد)\n";
                 } else {
                     $symptomsByCategory = [];
                     foreach ($symptomsOnDate as $symptom) {
@@ -1437,32 +1657,33 @@ class UserController {
                             if (!isset($symptomsByCategory[$cat])) $symptomsByCategory[$cat] = [];
                             $symptomsByCategory[$cat][] = $sym;
                         } catch (\Exception $e) {
-                            error_log("Error decrypting symptom history: " . $e->getMessage());
+                            error_log("Error decrypting symptom history for user {$user['id']}, symptom_id {$symptom['id']}: " . $e->getMessage());
+                             $symptomsByCategory["[خطا در رمزگشایی]"][] = "[داده نامعتبر]";
                         }
                     }
                     foreach($symptomsByCategory as $catName => $symArray) {
-                        $text .= "  - *{$catName}*: " . implode(', ', $symArray) . "\n";
+                        $text .= "  - *{$catName}*: " . implode('، ', $symArray) . "\n";
                     }
                 }
                  $text .= "--------------------\n";
             }
         }
 
-        $paginationButtons = [];
+        $paginationButtonsRow = [];
         if ($page > 0) {
-            $paginationButtons[] = ['text' => '⬅️ قبلی', 'callback_data' => 'user_history_symptoms:' . ($page - 1)];
+            $paginationButtonsRow[] = ['text' => '⬅️ قبلی', 'callback_data' => 'user_history_symptoms:' . ($page - 1)];
         }
         if (($page + 1) < $totalPages) {
-            $paginationButtons[] = ['text' => '➡️ بعدی', 'callback_data' => 'user_history_symptoms:' . ($page + 1)];
+            $paginationButtonsRow[] = ['text' => '➡️ بعدی', 'callback_data' => 'user_history_symptoms:' . ($page + 1)];
         }
 
-        $buttons = [];
-        if (!empty($paginationButtons)) {
-            $buttons[] = $paginationButtons;
+        $actionButtons = [];
+        if (!empty($paginationButtonsRow)) {
+            $actionButtons[] = $paginationButtonsRow;
         }
-        $buttons[] = [['text' => "🔙 بازگشت به منوی تاریخچه", 'callback_data' => 'user_show_history_menu']];
-        $buttons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
-        $keyboard = ['inline_keyboard' => $buttons];
+        $actionButtons[] = [['text' => "🔙 بازگشت به منوی تاریخچه", 'callback_data' => 'user_show_history_menu']];
+        $actionButtons[] = [['text' => "🏠 منوی اصلی", 'callback_data' => 'main_menu_show']];
+        $keyboard = ['inline_keyboard' => $actionButtons];
 
         if ($messageId) $this->telegramAPI->editMessageText($chatId, (int)$messageId, $text, $keyboard, 'Markdown');
         else $this->telegramAPI->sendMessage($chatId, $text, $keyboard, 'Markdown');
