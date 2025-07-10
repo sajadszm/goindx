@@ -216,9 +216,18 @@ class UserModel {
             $fields[] = "referred_by_user_id = :referred_by_user_id";
             $params[':referred_by_user_id'] = $data['referred_by_user_id'];
         }
+        if (array_key_exists('user_state', $data)) { // Ensure user_state is handled
+            $fields[] = "user_state = :user_state";
+            $params[':user_state'] = $data['user_state'];
+        }
         // Add more fields as needed
 
+        // Log built fields before checking if empty
+        error_log("UserModel::updateUser - Data received: " . json_encode($data));
+        error_log("UserModel::updateUser - Fields constructed for SQL: " . json_encode($fields));
+
         if (empty($fields)) {
+            error_log("UserModel::updateUser - No valid fields to update for user {$hashedTelegramId}. Params: " . json_encode($params) . " Data: " . json_encode($data));
             return false; // Nothing to update
         }
 
