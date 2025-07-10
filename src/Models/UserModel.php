@@ -224,9 +224,24 @@ class UserModel {
 
         $fields[] = "updated_at = CURRENT_TIMESTAMP";
         $sql = "UPDATE users SET " . implode(', ', $fields) . " WHERE telegram_id_hash = :telegram_id_hash";
+
+        error_log("UserModel::updateUser - SQL: " . $sql);
+        error_log("UserModel::updateUser - Params: " . json_encode($params));
+
         $stmt = $this->db->prepare($sql);
 
-        return $stmt->execute($params);
+        try {
+            $success = $stmt->execute($params);
+            if (!$success) {
+                error_log("UserModel::updateUser - execute() returned false. ErrorInfo: " . json_encode($stmt->errorInfo()));
+            } else {
+                error_log("UserModel::updateUser - execute() successful. Rows affected: " . $stmt->rowCount());
+            }
+            return $success;
+        } catch (\PDOException $e) {
+            error_log("UserModel::updateUser - PDOException: " . $e->getMessage());
+            return false;
+        }
     }
 
     // Add other methods like deleteUser, etc., as needed
