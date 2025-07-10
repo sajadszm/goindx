@@ -116,20 +116,35 @@ class AdminController {
 
     public function listSupportTickets(string $telegramId, int $chatId, ?int $messageId, string $filterAndPage) {
         if (!$this->isAdmin($telegramId)) { $this->telegramAPI->sendMessage($chatId, "عدم دسترسی."); return; }
+        error_log("AdminController::listSupportTickets - Received filterAndPage: {$filterAndPage}");
 
         list($filter, $page) = explode('_', $filterAndPage);
         $page = (int)$page;
         $perPage = 5; // Tickets per page
         $offset = $page * $perPage;
 
-        $statusFilter = ($filter === 'all') ? null : $filter; // 'open', 'admin_reply', 'user_reply'
-        if ($filter === 'open') $statusFilter = ['open', 'user_reply', 'admin_reply']; // Show all non-closed
+        $statusFilter = null;
+        if ($filter === 'open') {
+            $statusFilter = ['open', 'user_reply', 'admin_reply'];
+        } elseif ($filter !== 'all') { // Allows for specific statuses if ever needed, though UI only uses open/all
+            $statusFilter = $filter;
+        }
+        error_log("AdminController::listSupportTickets - Using statusFilter: " . json_encode($statusFilter) . ", Page: {$page}, Offset: {$offset}");
 
-        $tickets = $this->supportTicketModel->listTickets($statusFilter, $perPage, $offset);
-        $totalTickets = $this->supportTicketModel->countTickets($statusFilter);
-        $totalPages = ceil($totalTickets / $perPage);
+        try {
+            $tickets = $this->supportTicketModel->listTickets($statusFilter, $perPage, $offset);
+            $totalTickets = $this->supportTicketModel->countTickets($statusFilter);
+        } catch (\Exception $e) {
+            error_log("AdminController::listSupportTickets - Error fetching tickets: " . $e->getMessage());
+            $this->telegramAPI->sendMessage($chatId, "خطا در دریافت لیست تیکت‌ها. لطفا لاگ سرور را بررسی کنید.");
+            return;
+        }
 
-        $text = "لیست تیکت‌ها (" . ($filter === 'all' ? 'همه' : 'باز') . ") - صفحه " . ($page + 1) . " از {$totalPages}\n\n";
+        error_log("AdminController::listSupportTickets - Fetched " . count($tickets) . " tickets for display. Total tickets (for pagination): {$totalTickets}");
+
+        $totalPages = $totalTickets > 0 ? ceil($totalTickets / $perPage) : 1; // Avoid division by zero if $perPage is 0, though unlikely here
+
+        $text = "لیست تیکت‌ها (" . ($filter === 'all' ? 'همه' : ($filter === 'open' ? 'باز' : $filter)) . ") - صفحه " . ($page + 1) . " از {$totalPages}\n\n";
         $ticketButtons = [];
 
         if (empty($tickets)) {

@@ -139,35 +139,41 @@ class SupportTicketModel {
                 FROM support_tickets st
                 JOIN users u ON st.user_id = u.id";
         $params = [];
+        $types = []; // To store PDO::PARAM_types for execute array
 
         if ($statusFilter !== null) {
             if (is_array($statusFilter)) {
-                if (empty($statusFilter)) {
-                    // Avoids SQL error with empty IN clause, effectively means no status filter if array is empty
-                    // Or, depending on desired logic, could return empty array immediately.
-                    // For now, let's assume an empty array means "no specific status filter" if it gets here.
-                } else {
+                if (!empty($statusFilter)) {
                     $placeholders = implode(',', array_fill(0, count($statusFilter), '?'));
                     $sql .= " WHERE st.status IN ({$placeholders})";
-                    $params = array_merge($params, $statusFilter);
+                    foreach ($statusFilter as $sf) {
+                        $params[] = $sf;
+                        $types[] = PDO::PARAM_STR;
+                    }
                 }
+                // If $statusFilter is an empty array, no WHERE clause is added, fetching all.
             } else { // Single string status
                 $sql .= " WHERE st.status = ?";
                 $params[] = $statusFilter;
+                $types[] = PDO::PARAM_STR;
             }
         }
         $sql .= " ORDER BY st.last_message_at DESC LIMIT ? OFFSET ?";
         $params[] = $limit;
+        $types[] = PDO::PARAM_INT;
         $params[] = $offset;
+        $types[] = PDO::PARAM_INT;
+
+        error_log("SupportTicketModel::listTickets - SQL: {$sql}");
+        error_log("SupportTicketModel::listTickets - Params: " . json_encode($params));
 
         $stmt = $this->db->prepare($sql);
-        // Bind parameters one by one
-        foreach ($params as $key => $value) {
-            // PDO parameters are 1-indexed
-            $stmt->bindValue($key + 1, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
-        }
-        $stmt->execute();
+        // Execute with parameters passed directly to execute, if using ? placeholders
+        // For bindValue, types would be more explicit. Let's stick to execute array for simplicity with '?'
+        $stmt->execute($params);
+
         $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        error_log("SupportTicketModel::listTickets - Fetched " . count($tickets) . " raw ticket rows.");
 
         foreach($tickets as &$ticket){
             if (!empty($ticket['encrypted_first_name'])) {
@@ -186,31 +192,38 @@ class SupportTicketModel {
      * @return int Count of tickets.
      */
     public function countTickets(string|array|null $statusFilter = null): int {
-        $sql = "SELECT COUNT(*) FROM support_tickets st"; // Added alias for clarity if joins were needed
+        $sql = "SELECT COUNT(*) FROM support_tickets st";
         $params = [];
+        $types = []; // To store PDO::PARAM_types for execute array
 
         if ($statusFilter !== null) {
             if (is_array($statusFilter)) {
                 if (empty($statusFilter)) {
-                    return 0; // No statuses to count, so count is 0
+                    error_log("SupportTicketModel::countTickets - StatusFilter is empty array, returning 0.");
+                    return 0;
                 }
                 $placeholders = implode(',', array_fill(0, count($statusFilter), '?'));
                 $sql .= " WHERE st.status IN ({$placeholders})";
-                $params = array_merge($params, $statusFilter);
+                foreach ($statusFilter as $sf) {
+                    $params[] = $sf;
+                    $types[] = PDO::PARAM_STR;
+                }
             } else { // Single string status
                 $sql .= " WHERE st.status = ?";
                 $params[] = $statusFilter;
+                $types[] = PDO::PARAM_STR;
             }
         }
 
+        error_log("SupportTicketModel::countTickets - SQL: {$sql}");
+        error_log("SupportTicketModel::countTickets - Params: " . json_encode($params));
+
         $stmt = $this->db->prepare($sql);
-        // Bind parameters one by one
-        foreach ($params as $key => $value) {
-            // PDO parameters are 1-indexed
-            $stmt->bindValue($key + 1, $value, PDO::PARAM_STR); // Statuses are strings
-        }
-        $stmt->execute();
-        return (int)$stmt->fetchColumn();
+        $stmt->execute($params);
+
+        $count = (int)$stmt->fetchColumn();
+        error_log("SupportTicketModel::countTickets - Raw count from DB: {$count}");
+        return $count;
     }
 
     /**
