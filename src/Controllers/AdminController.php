@@ -151,10 +151,15 @@ class AdminController {
             $text .= "هیچ تیکتی برای نمایش وجود ندارد.";
         } else {
             foreach ($tickets as $ticket) {
-                $subjectPreview = !empty($ticket['subject']) ? mb_substr($ticket['subject'], 0, 20) . "..." : "بدون موضوع";
-                $userName = $ticket['user_first_name'] ?? "کاربر {$ticket['user_id']}";
-                $text .= "🎟️ #{$ticket['id']} - {$subjectPreview}\n";
-                $text .= "👤 {$userName} - Status: {$ticket['status']}\n";
+                $subjectPreviewText = !empty($ticket['subject']) ? mb_substr($ticket['subject'], 0, 20) . "..." : "بدون موضوع";
+                $userNameText = $ticket['user_first_name'] ?? "کاربر {$ticket['user_id']}";
+
+                // Escape Markdown special characters
+                $escapedSubjectPreview = str_replace(['_', '*', '`', '['], ['\_', '\*', '\`', '\['], $subjectPreviewText);
+                $escapedUserName = str_replace(['_', '*', '`', '['], ['\_', '\*', '\`', '\['], $userNameText);
+
+                $text .= "🎟️ #{$ticket['id']} - {$escapedSubjectPreview}\n";
+                $text .= "👤 {$escapedUserName} - Status: {$ticket['status']}\n";
                 $text .= "📅 " . (new \DateTime($ticket['last_message_at']))->format('Y-m-d H:i') . "\n---\n";
                 $ticketButtons[] = [['text' => "مشاهده/پاسخ تیکت #{$ticket['id']}", 'callback_data' => 'admin_support_view_ticket:' . $ticket['id']]];
             }
