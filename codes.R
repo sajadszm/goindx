@@ -25,10 +25,15 @@ draw_country_revenue_graph <- function(country_name, input_months, input_revenue
   # Create labels for nodes (Month - Country)
   labeled_months <- paste0(input_months, " - ", country_name)
 
+  # Calculate revenue difference from the previous month
+  revenue_diff <- c(input_revenues[1], diff(input_revenues))
+
   # Node data frame
   nodes <- data.frame(
     id = labeled_months,
-    weight = input_revenues
+    weight = input_revenues,
+    # Use absolute difference for node size, using original revenue for the first month
+    node_size = abs(revenue_diff)
   )
 
   # Edge data frame
@@ -45,12 +50,12 @@ draw_country_revenue_graph <- function(country_name, input_months, input_revenue
   # Plot the graph
   ggraph(graph_data, layout = "circle") +
     geom_edge_link(aes(width = weight / 8000), color = color, alpha = 0.7) + # Edge width scaled by weight
-    geom_node_point(aes(size = weight), color = color, alpha = 0.9) +      # Node size scaled by revenue
+    geom_node_point(aes(size = node_size), color = color, alpha = 0.9) +   # Node size now represents change in revenue
     geom_node_text(aes(label = name), repel = TRUE, size = 3.2, family = "Arial") + # Node labels
     theme_void() + # Minimal theme
     labs(
       title = paste("Monthly Revenue Graph -", country_name), # Plot title
-      size = "Monthly Revenue"                               # Legend title for size
+      size = "Change in Monthly Revenue"                      # Updated legend title
     )
 }
 
