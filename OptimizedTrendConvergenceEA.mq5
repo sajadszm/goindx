@@ -5,139 +5,154 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2023, Your Name & Co."
 #property link      "https://www.example.com"
-#property version   "1.01"
-#property description "A robust trend-following Expert Advisor using EMA convergence and an RSI momentum filter for high-probability entries."
+#property description "A highly configurable EA implementing a trend convergence strategy with multiple filters."
+#property version   "2.04" // Final Bugfix Revision
 
 //--- Include the Standard Library for Trade Functions
 #include <Trade\Trade.mqh>
 
-//--- EA Input Parameters ---
-// These inputs allow for full customization of the EA's strategy and risk settings.
+//+------------------------------------------------------------------+
+//| EA Input Parameters                                              |
+//+------------------------------------------------------------------+
+//--- Money Management
+input group           "Money Management"
+input double          Risk_Percentage = 1.0;                       // Risk per trade as % of account equity.
+input bool            Use_ATR_SLTP = true;                         // Use ATR for Stop Loss and Take Profit?
+input int             ATR_Period = 14;                             // Period for ATR calculation.
+input double          SL_ATR_Mult = 1.5;                           // Multiplier for ATR-based Stop Loss.
+input double          TP_ATR_Mult = 2.0;                           // Multiplier for ATR-based Take Profit.
+input double          Take_Profit_Ratio = 1.5;                     // R:R Ratio for Fixed Pips SL/TP mode.
+input int             Fixed_Stop_Loss_Pips = 50;                   // Fallback SL in pips if ATR is not used.
 
-// Trend Detection Module Settings
-input group           "Trend Detection Settings";
-input int             EMA_Fast_Period = 20;            // Period for the Fast Exponential Moving Average.
-input int             EMA_Slow_Period = 50;            // Period for the Slow Exponential Moving Average.
+//--- Signals/Filters
+input group           "Signals & Filters"
+//--- EMA Settings
+input int             FastEMA_Period = 20;                         // Fast EMA Period.
+input int             SlowEMA_Period = 50;                         // Slow EMA Period.
+input bool            Require_EMA_Cross = false;                   // Require a fresh EMA cross on the signal bar?
+input double          Max_EMA_Gap_Pips = 15.0;                     // Max allowed gap between EMAs in pips.
+input double          Max_Pullback_Distance_Pips = 10.0;           // Max distance price can be from Slow EMA.
+//--- RSI Settings
+input int             RSI_Period = 14;                             // RSI Period.
+input double          RSI_Oversold = 30.0;                         // RSI Oversold Level.
+input double          RSI_Overbought = 70.0;                       // RSI Overbought Level.
+input int             RSI_Confirm_Bars = 1;                        // How many bars RSI must stay compliant.
+//--- Volatility Filter
+input double          Min_ATR_Pips = 5.0;                          // Minimum ATR value in pips to allow trading.
+//--- Higher-Timeframe (HTF) Filter
+input bool            Use_HTF_Confirm = false;                     // Enable Higher-Timeframe confirmation?
+input ENUM_TIMEFRAMES HTF = PERIOD_H4;                             // Timeframe for HTF confirmation.
+input int             HTF_SlowEMA_Period = 200;                    // Period for the HTF EMA.
+input bool            Require_Strictly_Above_HTF_EMA = true;       // If true, price must be strictly above/below HTF EMA.
 
-// Momentum Filter Module Settings
-input group           "Momentum Filter Settings";
-input int             RSI_Period = 14;                 // Period for the Relative Strength Index.
-input double          RSI_Oversold_Level = 30.0;       // RSI level below which the market is considered oversold.
-input double          RSI_Overbought_Level = 70.0;     // RSI level above which the market is considered overbought.
+//--- Execution
+input group           "Execution"
+input ulong           Magic_Number = 123456;                       // EA's unique identifier for trades.
+input int             SL_Buffer_Pips = 1;                          // Buffer in pips to add to Stop Loss.
+input double          Max_Allowed_Spread_Pips = 2.5;               // Maximum allowed spread in pips for entry.
+input bool            Allow_MultiPositions = false;                // Allow multiple positions per symbol?
+input int             Max_Positions = 5;                           // Max number of concurrent positions if allowed.
 
-// Position Management Module Settings
-input group           "Position Management Settings";
-enum ENUM_SL_MODE
-{
-   slm_CandleHighLow, // Stop Loss based on the Signal Candle's High/Low
-   slm_FixedPips      // Stop Loss based on a Fixed number of pips
-};
-input ENUM_SL_MODE    Stop_Loss_Mode = slm_CandleHighLow;    // Choose the Stop Loss calculation method.
-input int             Fixed_Stop_Loss_Pips = 30;           // Stop Loss in pips (only used if SL Mode is FixedPips).
-input int             SL_Buffer_Pips = 1;                  // Extra pips to add to the SL for spread/slippage buffer.
-input double          Take_Profit_Ratio = 1.5;             // The Take Profit distance as a multiple of the Stop Loss distance (e.g., 1.5 means 1.5:1 R:R).
-input int             Trailing_Stop_Pips = 10;             // Distance in pips to trail the stop loss behind the current price.
-input int             Breakeven_Pips = 10;                 // Profit in pips at which the stop loss is moved to the entry price.
+//--- Position Management
+input group           "Position Management"
+input int             Breakeven_Trigger_Pips = 20;                 // Pips in profit to trigger breakeven.
+input int             Breakeven_Offset_Pips = 2;                   // Pips to set SL ahead of entry price at breakeven.
+input int             Trailing_Stop_Pips = 15;                     // Pips to trail the stop loss.
 
-// Risk Management Module Settings
-input group           "Risk Management Settings";
-input double          Risk_Percentage = 1.5;           // Percentage of the account balance to risk on a single trade.
-input ulong           Magic_Number = 12345;            // A unique ID to ensure the EA only manages its own trades.
+//--- Session Filter
+input group           "Session Filter"
+input bool            Limit_Sessions = false;                      // Enable session/time filter?
+input string          Session1_Start_Time = "08:00";               // Session 1 Start (Broker Time HH:MM).
+input string          Session1_End_Time = "16:00";                 // Session 1 End (Broker Time HH:MM).
 
-// Notification System Settings
-input group           "Notification Settings";
-input bool            Send_Email_Alerts = true;        // Set to true to receive email alerts for new signals.
-input bool            Show_Popup_Alerts = true;        // Set to true to receive on-screen pop-up alerts with sound.
+//--- Notifications
+input group           "Notifications"
+input bool            Send_Email_Alerts = true;                    // Enable Email Alerts?
+input bool            Show_Popup_Alerts = true;                    // Enable On-screen and Sound Alerts?
 
 
 //--- Global Variables ---
-CTrade trade;                  // Trading object from the standard library to simplify trade operations.
-int    ema_fast_handle;        // Handle for the fast EMA indicator.
-int    ema_slow_handle;        // Handle for the slow EMA indicator.
-int    rsi_handle;             // Handle for the RSI indicator.
+int    ema_fast_handle;
+int    ema_slow_handle;
+int    rsi_handle;
+int    atr_handle;
+int    htf_ema_handle;
+
+// Forward declaration for CTradeExt
+class CTradeExt;
+CTradeExt trade;
 
 //+------------------------------------------------------------------+
 //| Expert Initialization Function                                   |
-//| Called once when the EA is first attached to a chart.            |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   //--- Setup the trading object
    trade.SetExpertMagicNumber(Magic_Number);
-   trade.SetMarginMode(); // Use the account's default margin calculation mode.
-
+   trade.SetMarginMode();
    PrintFormat("Initializing EA '%s' on %s, %s...", MQL5InfoString(MQL5_PROGRAM_NAME), _Symbol, EnumToString(_Period));
 
-   //--- Initialize Fast EMA Indicator
-   ema_fast_handle = iMA(_Symbol, _Period, EMA_Fast_Period, 0, MODE_EMA, PRICE_CLOSE);
-   if(ema_fast_handle == INVALID_HANDLE)
-   {
-      PrintFormat("Error creating Fast EMA indicator handle - error #%d", GetLastError());
-      return(INIT_FAILED);
-   }
-
-   //--- Initialize Slow EMA Indicator
-   ema_slow_handle = iMA(_Symbol, _Period, EMA_Slow_Period, 0, MODE_EMA, PRICE_CLOSE);
-   if(ema_slow_handle == INVALID_HANDLE)
-   {
-      PrintFormat("Error creating Slow EMA indicator handle - error #%d", GetLastError());
-      return(INIT_FAILED);
-   }
-
-   //--- Initialize RSI Indicator
+   ema_fast_handle = iMA(_Symbol, _Period, FastEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+   ema_slow_handle = iMA(_Symbol, _Period, SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
    rsi_handle = iRSI(_Symbol, _Period, RSI_Period, PRICE_CLOSE);
-   if(rsi_handle == INVALID_HANDLE)
+   if(ema_fast_handle == INVALID_HANDLE || ema_slow_handle == INVALID_HANDLE || rsi_handle == INVALID_HANDLE)
    {
-      PrintFormat("Error creating RSI indicator handle - error #%d", GetLastError());
+      Print("Error creating main indicator handles.");
       return(INIT_FAILED);
    }
 
-   //--- Initialization successful
-   Print("EA Initialized Successfully. All indicators loaded.");
+   if(Use_ATR_SLTP || Min_ATR_Pips > 0)
+   {
+      atr_handle = iATR(_Symbol, _Period, ATR_Period);
+      if(atr_handle == INVALID_HANDLE) { Print("Error creating ATR indicator handle."); return(INIT_FAILED); }
+   }
+
+   if(Use_HTF_Confirm)
+   {
+      htf_ema_handle = iMA(_Symbol, HTF, HTF_SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
+      if(htf_ema_handle == INVALID_HANDLE) { Print("Error creating HTF EMA indicator handle."); return(INIT_FAILED); }
+   }
+
+   Print("EA Initialized Successfully.");
    return(INIT_SUCCEEDED);
 }
 
 //+------------------------------------------------------------------+
 //| Expert Deinitialization Function                                 |
-//| Called once when the EA is removed from the chart.               |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   //--- Clean up indicator handles to free up terminal resources
    IndicatorRelease(ema_fast_handle);
    IndicatorRelease(ema_slow_handle);
    IndicatorRelease(rsi_handle);
+   IndicatorRelease(atr_handle);
+   IndicatorRelease(htf_ema_handle);
    Print("EA Deinitialized. Resources released.");
 }
 
 //+------------------------------------------------------------------+
-//| Check if a position for the current symbol/magic exists          |
+//| Count open positions for the current symbol/magic                |
 //+------------------------------------------------------------------+
-bool HasOpenPosition()
+int CountOpenPositions()
 {
+   int count = 0;
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
-      if(!PositionSelectByIndex(i))
-         continue;
-
+      if(!PositionSelectByIndex(i)) continue;
       if(PositionGetString(POSITION_SYMBOL) == _Symbol && PositionGetInteger(POSITION_MAGIC) == (long)Magic_Number)
       {
-         return true; // Position found
+         count++;
       }
    }
-   return false; // No position found
+   return count;
 }
 
 //+------------------------------------------------------------------+
 //| Expert Tick Function                                             |
-//| Called on every new price tick for the chart's symbol.           |
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   //--- Manage open positions on every tick to ensure timely SL adjustments (trailing/breakeven).
    ManagePositions();
 
-   //--- Check for new trading signals only once per bar to conserve resources.
    static datetime last_bar_time = 0;
    datetime current_bar_time = (datetime)SeriesInfoInteger(_Symbol, _Period, SERIES_LAST_BAR_TIME);
 
@@ -145,228 +160,235 @@ void OnTick()
    {
       last_bar_time = current_bar_time;
 
-      //--- Check if auto-trading is enabled and if there are no open positions for this specific EA/symbol.
-      if((bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) && !HasOpenPosition())
+      if((bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
       {
-         CheckForSignal();
+         int open_positions = CountOpenPositions();
+         bool can_open_new_trade = Allow_MultiPositions ? (open_positions < Max_Positions) : (open_positions == 0);
+
+         if(can_open_new_trade)
+         {
+            CheckForSignal();
+         }
       }
    }
 }
 
 //+------------------------------------------------------------------+
 //| Check For Signal                                                 |
-//| Contains the core logic for identifying buy and sell signals.    |
 //+------------------------------------------------------------------+
 void CheckForSignal()
 {
-   //--- We need historical data for the last 3 completed bars.
-   // Bar at index 1: The "signal candle" that just closed. Conditions are checked on this bar.
-   // Bar at index 2: The candle prior to the signal candle, used for RSI crossover detection.
+    if(!IsTradingSessionActive()) return;
 
-   double ema_fast_buffer[3];
-   double ema_slow_buffer[3];
-   double rsi_buffer[3];
-   MqlRates price_buffer[3];
+    int data_to_copy = RSI_Confirm_Bars + 5; // Need enough data for all checks
+    double ema_fast[], ema_slow[], rsi[], atr[];
+    MqlRates prices[];
 
-   //--- Request data from the server for the last 3 completed bars (starting from index 1).
-   if(CopyBuffer(ema_fast_handle, 0, 1, 3, ema_fast_buffer) < 3 ||
-      CopyBuffer(ema_slow_handle, 0, 1, 3, ema_slow_buffer) < 3 ||
-      CopyBuffer(rsi_handle, 0, 1, 3, rsi_buffer) < 3 ||
-      CopyRates(_Symbol, _Period, 1, 3, price_buffer) < 3)
-   {
-      Print("Error: Could not copy indicator or price data for signal check. Not enough history?");
-      return;
-   }
+    ArrayResize(ema_fast, data_to_copy);
+    ArrayResize(ema_slow, data_to_copy);
+    ArrayResize(rsi, data_to_copy);
+    ArrayResize(atr, data_to_copy);
+    ArrayResize(prices, data_to_copy);
 
-   //--- Developer Note on Data Indexing:
-   // The CopyBuffer/CopyRates functions copy data from the past towards the present (chronologically).
-   // When requesting 3 bars starting from index 1 (the most recently closed bar), the data is returned as follows:
-   // buffer[0] = Data for bar at index 3 (Oldest)
-   // buffer[1] = Data for bar at index 2
-   // buffer[2] = Data for bar at index 1 (Newest, the signal candle)
-   // This is the standard MQL5 behavior. Therefore, we access buffer[2] for the signal candle.
+    if (CopyBuffer(ema_fast_handle, 0, 0, data_to_copy, ema_fast) < data_to_copy ||
+        CopyBuffer(ema_slow_handle, 0, 0, data_to_copy, ema_slow) < data_to_copy ||
+        CopyBuffer(rsi_handle, 0, 0, data_to_copy, rsi) < data_to_copy ||
+        CopyRates(_Symbol, _Period, 0, data_to_copy, prices) < data_to_copy)
+    {
+        Print("Could not get enough history for signal checks.");
+        return;
+    }
 
-   //--- Extract data for the Signal Candle (the most recently closed bar)
-   MqlRates signal_candle_info = price_buffer[2];
-   double fast_ema_signal = ema_fast_buffer[2];
-   double slow_ema_signal = ema_slow_buffer[2];
-   double rsi_signal = rsi_buffer[2];
-   double close_signal = signal_candle_info.close;
+    if(Use_ATR_SLTP || Min_ATR_Pips > 0)
+    {
+        if(CopyBuffer(atr_handle, 0, 0, data_to_copy, atr) < data_to_copy)
+        {
+            Print("Could not get ATR history for signal checks.");
+            return;
+        }
+    }
 
-   //--- Extract data for the Previous Candle (for RSI crossover)
-   double rsi_previous = rsi_buffer[1];
+    // --- CRITICAL: Reverse all arrays to work like a standard timeseries ---
+    ArraySetAsSeries(prices, true);
+    ArraySetAsSeries(ema_fast, true);
+    ArraySetAsSeries(ema_slow, true);
+    ArraySetAsSeries(rsi, true);
+    ArraySetAsSeries(atr, true);
+    // Now, index [0] is the current forming bar, [1] is the last closed bar (signal bar), etc.
 
-   //====== Buy Signal Logic ======
-   // 1. Trend Confirmation: Fast EMA is above Slow EMA, and the close price is above both EMAs.
-   bool is_uptrend = fast_ema_signal > slow_ema_signal && close_signal > fast_ema_signal && close_signal > slow_ema_signal;
-   // 2. Momentum Confirmation: RSI was below the oversold level and has now crossed back above it.
-   bool is_buy_momentum = rsi_previous < RSI_Oversold_Level && rsi_signal > RSI_Oversold_Level;
+    if (Min_ATR_Pips > 0 && (atr[1] / GetPipSize()) < Min_ATR_Pips) return;
 
-   if(is_uptrend && is_buy_momentum)
-   {
-      string message = StringFormat("%s: Buy Signal on %s.", _Symbol, EnumToString(_Period));
-      if(Show_Popup_Alerts) Alert(message);
-      if(Send_Email_Alerts) SendMail(StringFormat("%s Buy Signal", _Symbol), message);
+    if (IsSignalValid(true, prices, ema_fast, ema_slow, rsi))
+    {
+        ExecuteTrade(true, prices[1], atr[1]);
+        return;
+    }
 
-      ExecuteBuy(signal_candle_info);
-      return; // Exit after processing the signal
-   }
-
-   //====== Sell Signal Logic ======
-   // 1. Trend Confirmation: Fast EMA is below Slow EMA, and the close price is below both EMAs.
-   bool is_downtrend = fast_ema_signal < slow_ema_signal && close_signal < fast_ema_signal && close_signal < slow_ema_signal;
-   // 2. Momentum Confirmation: RSI was above the overbought level and has now crossed back below it.
-   bool is_sell_momentum = rsi_previous > RSI_Overbought_Level && rsi_signal < RSI_Overbought_Level;
-
-   if(is_downtrend && is_sell_momentum)
-   {
-      string message = StringFormat("%s: Sell Signal on %s.", _Symbol, EnumToString(_Period));
-      if(Show_Popup_Alerts) Alert(message);
-      if(Send_Email_Alerts) SendMail(StringFormat("%s Sell Signal", _Symbol), message);
-
-      ExecuteSell(signal_candle_info);
-      return; // Exit after processing the signal
-   }
+    if (IsSignalValid(false, prices, ema_fast, ema_slow, rsi))
+    {
+        ExecuteTrade(false, prices[1], atr[1]);
+        return;
+    }
 }
 
 //+------------------------------------------------------------------+
-//| Execute Buy Trade                                                |
-//| Handles the execution of a buy order with full risk management.  |
+//| Signal Validation Logic                                          |
 //+------------------------------------------------------------------+
-void ExecuteBuy(const MqlRates &signal_candle)
+bool IsSignalValid(bool is_buy, const MqlRates &prices[], const double &ema_fast[], const double &ema_slow[], const double &rsi[])
 {
-   double pip_size = GetPipSize();
-   double ask_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double sl_price;
+    // Arrays are now timeseries. Index 1 is the signal candle, 2 is the one before.
+    double pip_size = GetPipSize();
 
-   //--- Calculate initial SL based on the selected mode
-   if(Stop_Loss_Mode == slm_CandleHighLow)
-   {
-      sl_price = signal_candle.low - (SL_Buffer_Pips * pip_size);
-   }
-   else // slm_FixedPips
-   {
-      sl_price = ask_price - (Fixed_Stop_Loss_Pips * pip_size);
-   }
+    if(Use_HTF_Confirm && !CheckHTF(is_buy)) return false;
 
-   //--- Check against broker's minimum stop distance (Stops Level)
-   int stops_level = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
-   double min_stop_distance = stops_level * _Point;
+    if (!(is_buy ? ema_slow[1] > ema_slow[2] : ema_slow[1] < ema_slow[2])) return false;
 
-   if (ask_price - sl_price < min_stop_distance)
-   {
-      sl_price = ask_price - min_stop_distance;
-      PrintFormat("SL adjusted to broker's minimum stop level: %.5f", sl_price);
-   }
+    double ema_gap_now = MathAbs(ema_fast[1] - ema_slow[1]);
+    double ema_gap_prev = MathAbs(ema_fast[2] - ema_slow[2]);
+    if (ema_gap_now >= ema_gap_prev || (ema_gap_now / _Point) > Max_EMA_Gap_Pips) return false;
 
-   //--- Recalculate TP based on the final SL
-   double stop_loss_in_pips = (ask_price - sl_price) / pip_size;
-   if(stop_loss_in_pips <= 0) {
-      PrintFormat("Invalid SL distance for Buy. Entry: %.5f, SL: %.5f.", ask_price, sl_price);
-      return;
-   }
-   double tp_price = ask_price + (stop_loss_in_pips * Take_Profit_Ratio * pip_size);
+    if ((MathAbs(prices[1].close - ema_slow[1]) / pip_size) > Max_Pullback_Distance_Pips) return false;
 
-   //--- Calculate lot size
-   double lot_size = CalculateLotSize(ORDER_TYPE_BUY, sl_price);
-   if(lot_size <= 0) {
-      PrintFormat("Trade execution skipped due to invalid lot size (%.2f).", lot_size);
-      return;
-   }
+    if (Require_EMA_Cross)
+    {
+        bool cross_passed = is_buy ? (ema_fast[2] <= ema_slow[2] && ema_fast[1] > ema_slow[1]) :
+                                     (ema_fast[2] >= ema_slow[2] && ema_fast[1] < ema_slow[1]);
+        if (!cross_passed) return false;
+    }
 
-   //--- Execute the trade using 0.0 for price to get the best market price
-   PrintFormat("Executing BUY: Lot=%.2f, SL=%.5f, TP=%.5f", lot_size, sl_price, tp_price);
-   trade.Buy(lot_size, _Symbol, 0.0, sl_price, tp_price, "Buy by OptiTrendEA");
+    if(RSI_Confirm_Bars < 1) return false;
+    if (is_buy)
+    {
+        for (int i = 1; i <= RSI_Confirm_Bars; i++)
+        {
+            if (rsi[i] < RSI_Oversold) return false;
+        }
+        if (rsi[RSI_Confirm_Bars + 1] >= RSI_Oversold) return false;
+    }
+    else
+    {
+        for (int i = 1; i <= RSI_Confirm_Bars; i++)
+        {
+            if (rsi[i] > RSI_Overbought) return false;
+        }
+        if (rsi[RSI_Confirm_Bars + 1] <= RSI_Overbought) return false;
+    }
 
-   if(trade.ResultRetcode() != TRADE_RETCODE_DONE)
-   {
-      PrintFormat("Buy order failed. Error: %d - %s", trade.ResultRetcode(), trade.ResultComment());
-   }
-   else
-   {
-      PrintFormat("Buy order placed successfully. Ticket #%d", (int)trade.ResultOrder());
-   }
+    return true;
 }
 
 //+------------------------------------------------------------------+
-//| Execute Sell Trade                                               |
-//| Handles the execution of a sell order with full risk management. |
+//| Higher-Timeframe (HTF) Filter                                    |
 //+------------------------------------------------------------------+
-void ExecuteSell(const MqlRates &signal_candle)
+bool CheckHTF(bool is_buy)
 {
-   double pip_size = GetPipSize();
-   double bid_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double sl_price;
+    double htf_ema_buffer[1];
+    if(CopyBuffer(htf_ema_handle, 0, 1, 1, htf_ema_buffer) < 1) return false;
 
-   //--- Calculate initial SL based on the selected mode
-   if(Stop_Loss_Mode == slm_CandleHighLow)
-   {
-      sl_price = signal_candle.high + (SL_Buffer_Pips * pip_size);
-   }
-   else // slm_FixedPips
-   {
-      sl_price = bid_price + (Fixed_Stop_Loss_Pips * pip_size);
-   }
+    MqlTick tick;
+    if(!SymbolInfoTick(_Symbol, tick)) return false;
+    double current_price = tick.last;
 
-   //--- Check against broker's minimum stop distance (Stops Level)
-   int stops_level = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
-   double min_stop_distance = stops_level * _Point;
+    if(is_buy)
+    {
+        return Require_Strictly_Above_HTF_EMA ? (current_price > htf_ema_buffer[0]) : (current_price >= htf_ema_buffer[0]);
+    }
+    else
+    {
+        return Require_Strictly_Above_HTF_EMA ? (current_price < htf_ema_buffer[0]) : (current_price <= htf_ema_buffer[0]);
+    }
+}
 
-   if (sl_price - bid_price < min_stop_distance)
-   {
-      sl_price = bid_price + min_stop_distance;
-      PrintFormat("SL adjusted to broker's minimum stop level: %.5f", sl_price);
-   }
+//+------------------------------------------------------------------+
+//| Session/Time Filter                                              |
+//+------------------------------------------------------------------+
+bool IsTradingSessionActive()
+{
+    if(!Limit_Sessions) return true;
 
-   //--- Recalculate TP based on the final SL
-   double stop_loss_in_pips = (sl_price - bid_price) / pip_size;
-   if(stop_loss_in_pips <= 0) {
-      PrintFormat("Invalid SL distance for Sell. Entry: %.5f, SL: %.5f.", bid_price, sl_price);
-      return;
-   }
-   double tp_price = bid_price - (stop_loss_in_pips * Take_Profit_Ratio * pip_size);
+    MqlDateTime current_time;
+    TimeCurrent(current_time);
 
-   //--- Calculate lot size
-   double lot_size = CalculateLotSize(ORDER_TYPE_SELL, sl_price);
-   if(lot_size <= 0) {
-      PrintFormat("Trade execution skipped due to invalid lot size (%.2f).", lot_size);
-      return;
-   }
+    int start_hour = int(StringSubstr(Session1_Start_Time, 0, 2));
+    int start_min = int(StringSubstr(Session1_Start_Time, 3, 2));
+    int end_hour = int(StringSubstr(Session1_End_Time, 0, 2));
+    int end_min = int(StringSubstr(Session1_End_Time, 3, 2));
 
-   //--- Execute the trade using 0.0 for price to get the best market price
-   PrintFormat("Executing SELL: Lot=%.2f, SL=%.5f, TP=%.5f", lot_size, sl_price, tp_price);
-   trade.Sell(lot_size, _Symbol, 0.0, sl_price, tp_price, "Sell by OptiTrendEA");
+    long time_start = start_hour * 3600 + start_min * 60;
+    long time_end = end_hour * 3600 + end_min * 60;
+    long time_current = current_time.hour * 3600 + current_time.min * 60 + current_time.sec;
 
-   if(trade.ResultRetcode() != TRADE_RETCODE_DONE)
-   {
-      PrintFormat("Sell order failed. Error: %d - %s", trade.ResultRetcode(), trade.ResultComment());
-   }
-   else
-   {
-      PrintFormat("Sell order placed successfully. Ticket #%d", (int)trade.ResultOrder());
-   }
+    if (time_start < time_end)
+        return (time_current >= time_start && time_current <= time_end);
+    else
+        return (time_current >= time_start || time_current <= time_end);
+}
+
+//+------------------------------------------------------------------+
+//| Execute Trade (Unified Function)                                 |
+//+------------------------------------------------------------------+
+void ExecuteTrade(bool is_buy, const MqlRates &signal_candle, double atr_value)
+{
+    double pip_size = GetPipSize();
+
+    double spread = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    if (Max_Allowed_Spread_Pips > 0 && (spread / pip_size) > Max_Allowed_Spread_Pips)
+    {
+        PrintFormat("Trade aborted. Spread (%.1f pips) > Max allowed (%.1f pips).", spread / pip_size, Max_Allowed_Spread_Pips);
+        return;
+    }
+
+    double sl_price, tp_price;
+    ENUM_ORDER_TYPE order_type = is_buy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+    double entry_price = is_buy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+    if(Use_ATR_SLTP)
+    {
+        sl_price = is_buy ? entry_price - (atr_value * SL_ATR_Mult) : entry_price + (atr_value * SL_ATR_Mult);
+        tp_price = is_buy ? entry_price + (atr_value * TP_ATR_Mult) : entry_price - (atr_value * TP_ATR_Mult);
+    }
+    else
+    {
+        double sl_distance = Fixed_Stop_Loss_Pips * pip_size;
+        sl_price = is_buy ? entry_price - sl_distance : entry_price + sl_distance;
+        tp_price = is_buy ? entry_price + (sl_distance * Take_Profit_Ratio) : entry_price - (sl_distance * Take_Profit_Ratio);
+    }
+
+    double sl_with_buffer = is_buy ? sl_price - (SL_Buffer_Pips * pip_size) : sl_price + (SL_Buffer_Pips * pip_size);
+    int stops_level = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+    double min_stop_dist = stops_level * _Point;
+
+    if(is_buy && entry_price - sl_with_buffer < min_stop_dist) sl_with_buffer = entry_price - min_stop_dist;
+    if(!is_buy && sl_with_buffer - entry_price < min_stop_dist) sl_with_buffer = entry_price + min_stop_dist;
+
+    double lot_size = CalculateLotSize(order_type, sl_with_buffer);
+    if(lot_size <= 0) return;
+
+    string comment = is_buy ? "Buy by TrendConvergenceEA" : "Sell by TrendConvergenceEA";
+    if(trade.PlaceOrder(order_type, _Symbol, lot_size, sl_with_buffer, tp_price, comment))
+    {
+        PrintFormat("Order placed successfully. Ticket #%d", (int)trade.ResultOrder());
+    }
+    else
+    {
+        PrintFormat("Order failed. Error: %d - %s", trade.ResultRetcode(), trade.ResultComment());
+    }
 }
 
 //+------------------------------------------------------------------+
 //| Manage Positions                                                 |
-//| Handles Breakeven and Trailing Stop logic for open trades.       |
 //+------------------------------------------------------------------+
 void ManagePositions()
 {
    double pip_size = GetPipSize();
+   MqlTick tick;
 
-   //--- Loop through all open positions, from last to first
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
-      //--- Select position by its index to access its properties
-      if(!PositionSelectByIndex(i))
-         continue;
+      if(!PositionSelectByIndex(i)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol || PositionGetInteger(POSITION_MAGIC) != (long)Magic_Number) continue;
+      if(!SymbolInfoTick(_Symbol, tick)) continue;
 
-      //--- Filter trades by the current symbol and the EA's magic number
-      if(PositionGetString(POSITION_SYMBOL) != _Symbol || PositionGetInteger(POSITION_MAGIC) != (long)Magic_Number)
-         continue;
-
-      //--- Get all necessary position properties
       ulong  ticket       = PositionGetInteger(POSITION_TICKET);
       long   type         = PositionGetInteger(POSITION_TYPE);
       double open_price   = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -375,75 +397,53 @@ void ManagePositions()
 
       if(type == POSITION_TYPE_BUY)
       {
-         // Get the current price for a buy position
-         double current_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         double current_price = tick.bid;
          double profit_pips = (current_price - open_price) / pip_size;
 
-         //--- Breakeven Logic
-         if(current_sl < open_price && profit_pips >= Breakeven_Pips)
+         if(profit_pips >= Breakeven_Trigger_Pips)
          {
-            if(trade.PositionModify(ticket, open_price, current_tp))
+            double target_be_sl = open_price + (Breakeven_Offset_Pips * pip_size);
+            if(current_sl < target_be_sl)
             {
-               PrintFormat("Position #%d: Moved SL to Breakeven at %.5f", (int)ticket, open_price);
+               if(trade.PositionModify(ticket, target_be_sl, current_tp))
+                  PrintFormat("Position #%d: Moved SL to Breakeven+ at %.5f", (int)ticket, target_be_sl);
+               continue;
             }
-            else
-            {
-               PrintFormat("Position #%d: Failed to move SL to Breakeven. Error: %d - %s", (int)ticket, trade.ResultRetcode(), trade.ResultComment());
-            }
-            continue;
          }
 
-         //--- Trailing Stop Logic
          if(current_sl >= open_price)
          {
             double new_sl = current_price - (Trailing_Stop_Pips * pip_size);
-            if(new_sl > current_sl)
+            if(new_sl > current_sl && new_sl < current_price)
             {
                if(trade.PositionModify(ticket, new_sl, current_tp))
-               {
                   PrintFormat("Position #%d: Trailed SL to %.5f", (int)ticket, new_sl);
-               }
-               else
-               {
-                  PrintFormat("Position #%d: Failed to trail SL. Error: %d - %s", (int)ticket, trade.ResultRetcode(), trade.ResultComment());
-               }
             }
          }
       }
       else if(type == POSITION_TYPE_SELL)
       {
-         // Get the current price for a sell position
-         double current_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         double current_price = tick.ask;
          double profit_pips = (open_price - current_price) / pip_size;
 
-         //--- Breakeven Logic
-         if((current_sl > open_price || current_sl == 0) && profit_pips >= Breakeven_Pips)
+         if(profit_pips >= Breakeven_Trigger_Pips)
          {
-            if(trade.PositionModify(ticket, open_price, current_tp))
+            double target_be_sl = open_price - (Breakeven_Offset_Pips * pip_size);
+            if(current_sl > target_be_sl || current_sl == 0)
             {
-               PrintFormat("Position #%d: Moved SL to Breakeven at %.5f", (int)ticket, open_price);
+               if(trade.PositionModify(ticket, target_be_sl, current_tp))
+                  PrintFormat("Position #%d: Moved SL to Breakeven+ at %.5f", (int)ticket, target_be_sl);
+               continue;
             }
-            else
-            {
-               PrintFormat("Position #%d: Failed to move SL to Breakeven. Error: %d - %s", (int)ticket, trade.ResultRetcode(), trade.ResultComment());
-            }
-            continue;
          }
 
-         //--- Trailing Stop Logic
          if(current_sl <= open_price && current_sl != 0)
          {
             double new_sl = current_price + (Trailing_Stop_Pips * pip_size);
-            if(new_sl < current_sl)
+            if(new_sl < current_sl && new_sl > current_price)
             {
                if(trade.PositionModify(ticket, new_sl, current_tp))
-               {
                   PrintFormat("Position #%d: Trailed SL to %.5f", (int)ticket, new_sl);
-               }
-               else
-               {
-                  PrintFormat("Position #%d: Failed to trail SL. Error: %d - %s", (int)ticket, trade.ResultRetcode(), trade.ResultComment());
-               }
             }
          }
       }
@@ -452,23 +452,18 @@ void ManagePositions()
 
 //+------------------------------------------------------------------+
 //| Calculate Lot Size                                               |
-//| A robust function to calculate trade volume based on risk %.     |
 //+------------------------------------------------------------------+
 double CalculateLotSize(ENUM_ORDER_TYPE order_type, double sl_price)
 {
-    //--- Get account balance
-    double account_balance = AccountInfoDouble(ACCOUNT_BALANCE);
-    if(account_balance <= 0)
+    double account_equity = AccountInfoDouble(ACCOUNT_EQUITY);
+    if(account_equity <= 0)
     {
-        PrintFormat("Invalid account balance: %.2f", account_balance);
+        PrintFormat("Invalid account equity: %.2f", account_equity);
         return 0.0;
     }
-    //--- Calculate the amount to risk in the account's currency.
-    double risk_amount = account_balance * (Risk_Percentage / 100.0);
+    double risk_amount = account_equity * (Risk_Percentage / 100.0);
     double entry_price = (order_type == ORDER_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-    //--- Use OrderCalcProfit to find the monetary loss for a 1.0 lot trade.
-    // This is the most reliable way as it handles all currency conversions.
     double loss_for_one_lot = 0;
     if(!OrderCalcProfit(order_type, _Symbol, 1.0, entry_price, sl_price, loss_for_one_lot))
     {
@@ -476,36 +471,26 @@ double CalculateLotSize(ENUM_ORDER_TYPE order_type, double sl_price)
         return 0.0;
     }
 
-    //--- If loss is zero (e.g., invalid SL), we can't calculate lot size.
     if(MathAbs(loss_for_one_lot) <= 1e-10)
     {
         Print("Cannot calculate lot size. Potential loss for 1 lot is zero or invalid.");
         return 0.0;
     }
 
-    //--- Calculate the ideal lot size.
     double lot_size = risk_amount / MathAbs(loss_for_one_lot);
-
-    //--- Normalize the lot size according to the symbol's volume step (e.g., 0.01).
     double vol_step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
     lot_size = floor(lot_size / vol_step) * vol_step;
 
-    //--- Clamp the lot size to the symbol's minimum and maximum allowed volume.
     double min_vol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
     double max_vol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
     if(lot_size < min_vol)
-    {
         lot_size = min_vol;
-    }
     if(lot_size > max_vol)
-    {
         lot_size = max_vol;
-    }
 
-    //--- Final check: if the minimum lot size is still too risky, abort the trade.
     if (lot_size * MathAbs(loss_for_one_lot) > risk_amount && lot_size == min_vol)
     {
-       PrintFormat("Cannot afford minimum lot size (%.2f) with current risk percentage (%.2f%%). No trade placed.", min_vol, Risk_Percentage);
+       PrintFormat("Cannot afford minimum lot size (%.2f) with current risk percentage (%.2f%%).", min_vol, Risk_Percentage);
        return 0.0;
     }
 
@@ -514,15 +499,28 @@ double CalculateLotSize(ENUM_ORDER_TYPE order_type, double sl_price)
 
 //+------------------------------------------------------------------+
 //| Get Pip Size                                                     |
-//| A helper function to determine the size of one pip for any symbol|
 //+------------------------------------------------------------------+
 double GetPipSize()
 {
-    // A pip is typically the 4th decimal place for Forex, or 2nd for JPY pairs.
-    // This logic correctly handles 2, 3, 4, and 5-digit brokers.
     int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
-    if (digits == 3 || digits == 5 || digits == 1) // Handle 3/5 digit brokers and some commodities/indices
+    if (digits == 3 || digits == 5 || digits == 1)
         return _Point * 10;
     return _Point;
 }
+
+//+------------------------------------------------------------------+
+//| CTrade extension for cleaner order sending                       |
+//+------------------------------------------------------------------+
+class CTradeExt : public CTrade
+{
+public:
+    bool PlaceOrder(ENUM_ORDER_TYPE type, string symbol, double volume, double sl, double tp, string comment)
+    {
+        if(type == ORDER_TYPE_BUY)
+            return Buy(volume, symbol, 0.0, sl, tp, comment);
+        else
+            return Sell(volume, symbol, 0.0, sl, tp, comment);
+    }
+};
+CTradeExt trade;
 //+------------------------------------------------------------------+
