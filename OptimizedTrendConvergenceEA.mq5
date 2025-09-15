@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
 //|                                 OptimizedTrendConvergenceEA.mq5 |
-//|                                     Developed by Jules (AI)     |
-//|                                      https://www.example.com    |
+//|                                   Developed by sajad sameie       |
+//|                         https://instagram.com/sajjad.sameie     |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2023, Your Name & Co."
-#property link      "https://www.example.com"
+#property copyright "Copyright 2024, sajad sameie"
+#property link      "https://instagram.com/sajjad.sameie"
 #property description "A highly configurable EA implementing a trend convergence strategy with multiple filters."
 #property version   "2.06" // Final Bugfix Revision
 
