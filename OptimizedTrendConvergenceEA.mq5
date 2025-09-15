@@ -6,7 +6,7 @@
 #property copyright "Copyright 2023, Your Name & Co."
 #property link      "https://www.example.com"
 #property description "A highly configurable EA implementing a trend convergence strategy with multiple filters."
-#property version   "2.04" // Final Bugfix Revision
+#property version   "2.06" // Final Bugfix Revision
 
 //--- Include the Standard Library for Trade Functions
 #include <Trade\Trade.mqh>
@@ -14,61 +14,40 @@
 //+------------------------------------------------------------------+
 //| EA Input Parameters                                              |
 //+------------------------------------------------------------------+
-//--- Money Management
-input group           "Money Management"
-input double          Risk_Percentage = 1.0;                       // Risk per trade as % of account equity.
-input bool            Use_ATR_SLTP = true;                         // Use ATR for Stop Loss and Take Profit?
-input int             ATR_Period = 14;                             // Period for ATR calculation.
-input double          SL_ATR_Mult = 1.5;                           // Multiplier for ATR-based Stop Loss.
-input double          TP_ATR_Mult = 2.0;                           // Multiplier for ATR-based Take Profit.
-input double          Take_Profit_Ratio = 1.5;                     // R:R Ratio for Fixed Pips SL/TP mode.
-input int             Fixed_Stop_Loss_Pips = 50;                   // Fallback SL in pips if ATR is not used.
+input group           "Money Management";
+input double          Risk_Percentage = 1.0;
+input bool            Use_ATR_SLTP = true;
+input int             ATR_Period = 14;
+input double          SL_ATR_Mult = 1.5;
+input double          TP_ATR_Mult = 2.0;
+input double          Take_Profit_Ratio = 1.5;
+input int             Fixed_Stop_Loss_Pips = 50;
 
-//--- Signals/Filters
-input group           "Signals & Filters"
-//--- EMA Settings
-input int             FastEMA_Period = 20;                         // Fast EMA Period.
-input int             SlowEMA_Period = 50;                         // Slow EMA Period.
-input bool            Require_EMA_Cross = false;                   // Require a fresh EMA cross on the signal bar?
-input double          Max_EMA_Gap_Pips = 15.0;                     // Max allowed gap between EMAs in pips.
-input double          Max_Pullback_Distance_Pips = 10.0;           // Max distance price can be from Slow EMA.
-//--- RSI Settings
-input int             RSI_Period = 14;                             // RSI Period.
-input double          RSI_Oversold = 30.0;                         // RSI Oversold Level.
-input double          RSI_Overbought = 70.0;                       // RSI Overbought Level.
-input int             RSI_Confirm_Bars = 1;                        // How many bars RSI must stay compliant.
-//--- Volatility Filter
-input double          Min_ATR_Pips = 5.0;                          // Minimum ATR value in pips to allow trading.
-//--- Higher-Timeframe (HTF) Filter
-input bool            Use_HTF_Confirm = false;                     // Enable Higher-Timeframe confirmation?
-input ENUM_TIMEFRAMES HTF = PERIOD_H4;                             // Timeframe for HTF confirmation.
-input int             HTF_SlowEMA_Period = 200;                    // Period for the HTF EMA.
-input bool            Require_Strictly_Above_HTF_EMA = true;       // If true, price must be strictly above/below HTF EMA.
+input group           "Signals & Filters";
+input bool            Use_SlowEMA_Slope_Filter = true;
+input int             FastEMA_Period = 20;
+input int             SlowEMA_Period = 50;
+input double          Max_Pullback_Distance_Pips = 30.0;
+input int             RSI_Period = 14;
+input double          RSI_Oversold = 30.0;
+input double          RSI_Overbought = 70.0;
+input int             RSI_Confirm_Bars = 1;
 
-//--- Execution
-input group           "Execution"
-input ulong           Magic_Number = 123456;                       // EA's unique identifier for trades.
-input int             SL_Buffer_Pips = 1;                          // Buffer in pips to add to Stop Loss.
-input double          Max_Allowed_Spread_Pips = 2.5;               // Maximum allowed spread in pips for entry.
-input bool            Allow_MultiPositions = false;                // Allow multiple positions per symbol?
-input int             Max_Positions = 5;                           // Max number of concurrent positions if allowed.
+input group           "Execution";
+input ulong           Magic_Number = 123456;
+input int             SL_Buffer_Pips = 1;
+input double          Max_Allowed_Spread_Pips = 2.5;
+input bool            Allow_MultiPositions = false;
+input int             Max_Positions = 5;
 
-//--- Position Management
-input group           "Position Management"
-input int             Breakeven_Trigger_Pips = 20;                 // Pips in profit to trigger breakeven.
-input int             Breakeven_Offset_Pips = 2;                   // Pips to set SL ahead of entry price at breakeven.
-input int             Trailing_Stop_Pips = 15;                     // Pips to trail the stop loss.
+input group           "Position Management";
+input int             Breakeven_Trigger_Pips = 20;
+input int             Breakeven_Offset_Pips = 2;
+input int             Trailing_Stop_Pips = 15;
 
-//--- Session Filter
-input group           "Session Filter"
-input bool            Limit_Sessions = false;                      // Enable session/time filter?
-input string          Session1_Start_Time = "08:00";               // Session 1 Start (Broker Time HH:MM).
-input string          Session1_End_Time = "16:00";                 // Session 1 End (Broker Time HH:MM).
-
-//--- Notifications
-input group           "Notifications"
-input bool            Send_Email_Alerts = true;                    // Enable Email Alerts?
-input bool            Show_Popup_Alerts = true;                    // Enable On-screen and Sound Alerts?
+input group           "Notifications";
+input bool            Send_Email_Alerts = true;
+input bool            Show_Popup_Alerts = true;
 
 
 //--- Global Variables ---
@@ -76,9 +55,7 @@ int    ema_fast_handle;
 int    ema_slow_handle;
 int    rsi_handle;
 int    atr_handle;
-int    htf_ema_handle;
 
-// Forward declaration for CTradeExt
 class CTradeExt;
 CTradeExt trade;
 
@@ -94,22 +71,11 @@ int OnInit()
    ema_fast_handle = iMA(_Symbol, _Period, FastEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
    ema_slow_handle = iMA(_Symbol, _Period, SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
    rsi_handle = iRSI(_Symbol, _Period, RSI_Period, PRICE_CLOSE);
-   if(ema_fast_handle == INVALID_HANDLE || ema_slow_handle == INVALID_HANDLE || rsi_handle == INVALID_HANDLE)
+   atr_handle = iATR(_Symbol, _Period, ATR_Period);
+   if(ema_fast_handle == INVALID_HANDLE || ema_slow_handle == INVALID_HANDLE || rsi_handle == INVALID_HANDLE || atr_handle == INVALID_HANDLE)
    {
       Print("Error creating main indicator handles.");
       return(INIT_FAILED);
-   }
-
-   if(Use_ATR_SLTP || Min_ATR_Pips > 0)
-   {
-      atr_handle = iATR(_Symbol, _Period, ATR_Period);
-      if(atr_handle == INVALID_HANDLE) { Print("Error creating ATR indicator handle."); return(INIT_FAILED); }
-   }
-
-   if(Use_HTF_Confirm)
-   {
-      htf_ema_handle = iMA(_Symbol, HTF, HTF_SlowEMA_Period, 0, MODE_EMA, PRICE_CLOSE);
-      if(htf_ema_handle == INVALID_HANDLE) { Print("Error creating HTF EMA indicator handle."); return(INIT_FAILED); }
    }
 
    Print("EA Initialized Successfully.");
@@ -125,7 +91,6 @@ void OnDeinit(const int reason)
    IndicatorRelease(ema_slow_handle);
    IndicatorRelease(rsi_handle);
    IndicatorRelease(atr_handle);
-   IndicatorRelease(htf_ema_handle);
    Print("EA Deinitialized. Resources released.");
 }
 
@@ -152,19 +117,16 @@ int CountOpenPositions()
 void OnTick()
 {
    ManagePositions();
-
    static datetime last_bar_time = 0;
    datetime current_bar_time = (datetime)SeriesInfoInteger(_Symbol, _Period, SERIES_LAST_BAR_TIME);
 
    if(current_bar_time > last_bar_time)
    {
       last_bar_time = current_bar_time;
-
       if((bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
       {
          int open_positions = CountOpenPositions();
          bool can_open_new_trade = Allow_MultiPositions ? (open_positions < Max_Positions) : (open_positions == 0);
-
          if(can_open_new_trade)
          {
             CheckForSignal();
@@ -178,9 +140,7 @@ void OnTick()
 //+------------------------------------------------------------------+
 void CheckForSignal()
 {
-    if(!IsTradingSessionActive()) return;
-
-    int data_to_copy = RSI_Confirm_Bars + 5; // Need enough data for all checks
+    int data_to_copy = RSI_Confirm_Bars + 3;
     double ema_fast[], ema_slow[], rsi[], atr[];
     MqlRates prices[];
 
@@ -190,43 +150,25 @@ void CheckForSignal()
     ArrayResize(atr, data_to_copy);
     ArrayResize(prices, data_to_copy);
 
-    if (CopyBuffer(ema_fast_handle, 0, 0, data_to_copy, ema_fast) < data_to_copy ||
-        CopyBuffer(ema_slow_handle, 0, 0, data_to_copy, ema_slow) < data_to_copy ||
-        CopyBuffer(rsi_handle, 0, 0, data_to_copy, rsi) < data_to_copy ||
-        CopyRates(_Symbol, _Period, 0, data_to_copy, prices) < data_to_copy)
+    if (CopyBuffer(ema_fast_handle, 0, 1, data_to_copy, ema_fast) < data_to_copy ||
+        CopyBuffer(ema_slow_handle, 0, 1, data_to_copy, ema_slow) < data_to_copy ||
+        CopyBuffer(rsi_handle, 0, 1, data_to_copy, rsi) < data_to_copy ||
+        CopyBuffer(atr_handle, 0, 1, data_to_copy, atr) < data_to_copy ||
+        CopyRates(_Symbol, _Period, 1, data_to_copy, prices) < data_to_copy)
     {
         Print("Could not get enough history for signal checks.");
         return;
     }
 
-    if(Use_ATR_SLTP || Min_ATR_Pips > 0)
-    {
-        if(CopyBuffer(atr_handle, 0, 0, data_to_copy, atr) < data_to_copy)
-        {
-            Print("Could not get ATR history for signal checks.");
-            return;
-        }
-    }
-
-    // --- CRITICAL: Reverse all arrays to work like a standard timeseries ---
-    ArraySetAsSeries(prices, true);
-    ArraySetAsSeries(ema_fast, true);
-    ArraySetAsSeries(ema_slow, true);
-    ArraySetAsSeries(rsi, true);
-    ArraySetAsSeries(atr, true);
-    // Now, index [0] is the current forming bar, [1] is the last closed bar (signal bar), etc.
-
-    if (Min_ATR_Pips > 0 && (atr[1] / GetPipSize()) < Min_ATR_Pips) return;
-
     if (IsSignalValid(true, prices, ema_fast, ema_slow, rsi))
     {
-        ExecuteTrade(true, prices[1], atr[1]);
+        ExecuteTrade(true, prices[0], atr[0]);
         return;
     }
 
     if (IsSignalValid(false, prices, ema_fast, ema_slow, rsi))
     {
-        ExecuteTrade(false, prices[1], atr[1]);
+        ExecuteTrade(false, prices[0], atr[0]);
         return;
     }
 }
@@ -236,92 +178,37 @@ void CheckForSignal()
 //+------------------------------------------------------------------+
 bool IsSignalValid(bool is_buy, const MqlRates &prices[], const double &ema_fast[], const double &ema_slow[], const double &rsi[])
 {
-    // Arrays are now timeseries. Index 1 is the signal candle, 2 is the one before.
     double pip_size = GetPipSize();
 
-    if(Use_HTF_Confirm && !CheckHTF(is_buy)) return false;
-
-    if (!(is_buy ? ema_slow[1] > ema_slow[2] : ema_slow[1] < ema_slow[2])) return false;
-
-    double ema_gap_now = MathAbs(ema_fast[1] - ema_slow[1]);
-    double ema_gap_prev = MathAbs(ema_fast[2] - ema_slow[2]);
-    if (ema_gap_now >= ema_gap_prev || (ema_gap_now / _Point) > Max_EMA_Gap_Pips) return false;
-
-    if ((MathAbs(prices[1].close - ema_slow[1]) / pip_size) > Max_Pullback_Distance_Pips) return false;
-
-    if (Require_EMA_Cross)
+    if(Use_SlowEMA_Slope_Filter)
     {
-        bool cross_passed = is_buy ? (ema_fast[2] <= ema_slow[2] && ema_fast[1] > ema_slow[1]) :
-                                     (ema_fast[2] >= ema_slow[2] && ema_fast[1] < ema_slow[1]);
-        if (!cross_passed) return false;
+        if (!(is_buy ? ema_slow[0] > ema_slow[1] : ema_slow[0] < ema_slow[1])) return false;
+    }
+
+    if (Max_Pullback_Distance_Pips > 0)
+    {
+        if ((MathAbs(prices[0].close - ema_slow[0]) / pip_size) > Max_Pullback_Distance_Pips) return false;
     }
 
     if(RSI_Confirm_Bars < 1) return false;
     if (is_buy)
     {
-        for (int i = 1; i <= RSI_Confirm_Bars; i++)
+        for (int i = 0; i < RSI_Confirm_Bars; i++)
         {
             if (rsi[i] < RSI_Oversold) return false;
         }
-        if (rsi[RSI_Confirm_Bars + 1] >= RSI_Oversold) return false;
+        if (rsi[RSI_Confirm_Bars] >= RSI_Oversold) return false;
     }
     else
     {
-        for (int i = 1; i <= RSI_Confirm_Bars; i++)
+        for (int i = 0; i < RSI_Confirm_Bars; i++)
         {
             if (rsi[i] > RSI_Overbought) return false;
         }
-        if (rsi[RSI_Confirm_Bars + 1] <= RSI_Overbought) return false;
+        if (rsi[RSI_Confirm_Bars] <= RSI_Overbought) return false;
     }
 
     return true;
-}
-
-//+------------------------------------------------------------------+
-//| Higher-Timeframe (HTF) Filter                                    |
-//+------------------------------------------------------------------+
-bool CheckHTF(bool is_buy)
-{
-    double htf_ema_buffer[1];
-    if(CopyBuffer(htf_ema_handle, 0, 1, 1, htf_ema_buffer) < 1) return false;
-
-    MqlTick tick;
-    if(!SymbolInfoTick(_Symbol, tick)) return false;
-    double current_price = tick.last;
-
-    if(is_buy)
-    {
-        return Require_Strictly_Above_HTF_EMA ? (current_price > htf_ema_buffer[0]) : (current_price >= htf_ema_buffer[0]);
-    }
-    else
-    {
-        return Require_Strictly_Above_HTF_EMA ? (current_price < htf_ema_buffer[0]) : (current_price <= htf_ema_buffer[0]);
-    }
-}
-
-//+------------------------------------------------------------------+
-//| Session/Time Filter                                              |
-//+------------------------------------------------------------------+
-bool IsTradingSessionActive()
-{
-    if(!Limit_Sessions) return true;
-
-    MqlDateTime current_time;
-    TimeCurrent(current_time);
-
-    int start_hour = int(StringSubstr(Session1_Start_Time, 0, 2));
-    int start_min = int(StringSubstr(Session1_Start_Time, 3, 2));
-    int end_hour = int(StringSubstr(Session1_End_Time, 0, 2));
-    int end_min = int(StringSubstr(Session1_End_Time, 3, 2));
-
-    long time_start = start_hour * 3600 + start_min * 60;
-    long time_end = end_hour * 3600 + end_min * 60;
-    long time_current = current_time.hour * 3600 + current_time.min * 60 + current_time.sec;
-
-    if (time_start < time_end)
-        return (time_current >= time_start && time_current <= time_end);
-    else
-        return (time_current >= time_start || time_current <= time_end);
 }
 
 //+------------------------------------------------------------------+
@@ -330,7 +217,6 @@ bool IsTradingSessionActive()
 void ExecuteTrade(bool is_buy, const MqlRates &signal_candle, double atr_value)
 {
     double pip_size = GetPipSize();
-
     double spread = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
     if (Max_Allowed_Spread_Pips > 0 && (spread / pip_size) > Max_Allowed_Spread_Pips)
     {
@@ -364,7 +250,7 @@ void ExecuteTrade(bool is_buy, const MqlRates &signal_candle, double atr_value)
     double lot_size = CalculateLotSize(order_type, sl_with_buffer);
     if(lot_size <= 0) return;
 
-    string comment = is_buy ? "Buy by TrendConvergenceEA" : "Sell by TrendConvergenceEA";
+    string comment = is_buy ? "Buy by EA" : "Sell by EA";
     if(trade.PlaceOrder(order_type, _Symbol, lot_size, sl_with_buffer, tp_price, comment))
     {
         PrintFormat("Order placed successfully. Ticket #%d", (int)trade.ResultOrder());
@@ -483,10 +369,8 @@ double CalculateLotSize(ENUM_ORDER_TYPE order_type, double sl_price)
 
     double min_vol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
     double max_vol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-    if(lot_size < min_vol)
-        lot_size = min_vol;
-    if(lot_size > max_vol)
-        lot_size = max_vol;
+    if(lot_size < min_vol) lot_size = min_vol;
+    if(lot_size > max_vol) lot_size = max_vol;
 
     if (lot_size * MathAbs(loss_for_one_lot) > risk_amount && lot_size == min_vol)
     {
