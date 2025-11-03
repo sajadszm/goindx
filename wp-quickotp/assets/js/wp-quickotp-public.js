@@ -40,7 +40,17 @@
                 success: function( response ) {
                     form.hide();
                     otpForm.parent().show();
-                    startTimer( 120 );
+                    startTimer( wpqo_get_option( 'otp_expiry', 120 ) );
+                    if ( 'OTPCredential' in window ) {
+                        navigator.credentials.get({
+                            otp: { transport:['sms'] }
+                        }).then(otp => {
+                            otpInput.val(otp.code);
+                            otpForm.submit();
+                        }).catch(err => {
+                            console.log(err);
+                        });
+                    }
                 },
                 error: function( response ) {
                     messageContainer.text( response.responseJSON.message );

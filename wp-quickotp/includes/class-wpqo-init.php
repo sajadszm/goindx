@@ -14,8 +14,10 @@ class WPQO_Init {
         require_once plugin_dir_path( __FILE__ ) . 'class-wpqo-sms-providers.php';
         require_once plugin_dir_path( __FILE__ ) . 'class-wpqo-woocommerce.php';
         require_once plugin_dir_path( __FILE__ ) . 'class-wpqo-rest-api.php';
+        require_once plugin_dir_path( __FILE__ ) . 'class-wpqo-logger.php';
         require_once plugin_dir_path( __FILE__ ) . 'class-wpqo-popup.php';
         require_once plugin_dir_path( __FILE__ ) . 'class-wpqo-tools.php';
+        require_once plugin_dir_path( __FILE__ ) . 'class-wpqo-sessions.php';
         require_once plugin_dir_path( __FILE__ ) . 'helpers.php';
     }
 

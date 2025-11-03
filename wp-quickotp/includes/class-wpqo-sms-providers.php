@@ -29,16 +29,18 @@ abstract class WPQO_SMS_Provider {
     }
 
     protected function log_response( $url, $args, $response ) {
-        if ( class_exists( 'WPQO_Logger' ) ) {
-            WPQO_Logger::log(
-                'SMS API Request',
-                array(
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'quickotp_otp_logs';
+        $wpdb->insert(
+            $table_name,
+            array(
+                'meta' => json_encode( array(
                     'url'      => $url,
                     'args'     => $args,
                     'response' => $response,
-                )
-            );
-        }
+                ) ),
+            )
+        );
     }
 }
 
@@ -55,7 +57,7 @@ class WPQO_SMS_Provider_Smsir extends WPQO_SMS_Provider implements WPQO_SMS_Prov
         $url = 'https://api.sms.ir/v1/verify';
         $body = array(
             'mobile'      => $phone,
-            'templateId'  => $template_id,
+            'templateId'  => (int) $template_id,
             'parameters'  => array(
                 array(
                     'name'  => 'CODE',
@@ -101,7 +103,7 @@ class WPQO_SMS_Provider_Melipayamak extends WPQO_SMS_Provider implements WPQO_SM
         $body = array(
             'to'   => $phone,
             'from' => $from,
-            'text' => sprintf( __( 'Your verification code is: %s', 'wp-quickotp' ), $otp ),
+            'text' => sprintf( wpqo_get_option( 'otp_message_template', __( 'Your verification code is: {CODE}', 'wp-quickotp' ) ), $otp ),
         );
 
         $args = array(
