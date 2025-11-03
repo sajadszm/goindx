@@ -1,0 +1,154 @@
+# Copyright (C) 2023 Jules
+# This file is distributed under the same license as the WP-QuickOTP plugin.
+msgid ""
+msgstr ""
+"Project-Id-Version: WP-QuickOTP 1.0.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/wp-quickotp\n"
+"POT-Creation-Date: 2023-10-27 10:00:00+00:00\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"PO-Revision-Date: 2023-10-27 10:00:00+00:00\n"
+"Last-Translator: Jules <jules@example.com>\n"
+"Language-Team: Jules <jules@example.com>\n"
+"Language: fa_IR\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 2.2\n"
+"X-Poedit-Basepath: ..\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-KeywordsList: __;_e;_x;esc_html__;esc_html_e;esc_attr__;esc_attr_e;esc_html_x;esc_attr_x\n"
+"X-Poedit-SearchPath-0: .\n"
+"X-Poedit-SearchPathExcluded-0: node_modules\n"
+"X-Poedit-SearchPathExcluded-1: vendor\n"
+
+#: admin/class-wp-quickotp-admin.php:29
+msgid "WP Quick OTP"
+msgstr "افزونه ورود سریع با کد تایید"
+
+#: admin/class-wp-quickotp-admin.php:30
+msgid "WP Quick OTP Settings"
+msgstr "تنظیمات افزونه ورود سریع با کد تایید"
+
+#: admin/class-wp-quickotp-admin.php:48
+msgid "General Settings"
+msgstr "تنظیمات کلی"
+
+#: admin/class-wp-quickotp-admin.php:55
+msgid "Template"
+msgstr "قالب"
+
+#: admin/class-wp-quickotp-admin.php:62
+msgid "SMS Provider Settings"
+msgstr "تنظیمات درگاه پیامک"
+
+#: admin/class-wp-quickotp-admin.php:69
+msgid "SMS Provider"
+msgstr "درگاه پیامک"
+
+#: admin/class-wp-quickotp-admin.php:76
+msgid "sms.ir API Key"
+msgstr "کلید API sms.ir"
+
+#: admin/class-wp-quickotp-admin.php:83
+msgid "sms.ir Template ID"
+msgstr "شناسه قالب sms.ir"
+
+#: admin/class-wp-quickotp-admin.php:90
+msgid "Melipayamak Username"
+msgstr "نام کاربری ملی‌پیامک"
+
+#: admin/class-wp-quickotp-admin.php:97
+msgid "Melipayamak Password"
+msgstr "رمز عبور ملی‌پیامک"
+
+#: admin/class-wp-quickotp-admin.php:104
+msgid "Melipayamak From Number"
+msgstr "شماره ارسال‌کننده ملی‌پیامک"
+
+#: admin/class-wp-quickotp-admin.php:111
+msgid "WooCommerce Settings"
+msgstr "تنظیمات ووکامرس"
+
+#: admin/class-wp-quickotp-admin.php:118
+msgid "Require OTP at checkout"
+msgstr "الزام تایید شماره موبایل در تسویه حساب"
+
+#: admin/class-wp-quickotp-admin.php:125
+msgid "OTP Page"
+msgstr "برگه ورود با کد تایید"
+
+#: admin/class-wp-quickotp-admin.php:158
+msgid "Manage the template and appearance of the plugin in this section."
+msgstr "تنظیمات مربوط به قالب و ظاهر افزونه را در این بخش مدیریت کنید."
+
+#: admin/class-wp-quickotp-admin.php:162
+msgid "Manage the SMS provider settings in this section."
+msgstr "تنظیمات مربوط به درگاه پیامک را در این بخش مدیریت کنید."
+
+#: admin/class-wp-quickotp-admin.php:166
+msgid "Manage the WooCommerce settings in this section."
+msgstr "تنظیمات مربوط به ووکامرس را در این بخش مدیریت کنید."
+
+#: admin/class-wp-quickotp-admin.php:174
+msgid "Simple"
+msgstr "ساده"
+
+#: admin/class-wp-quickotp-admin.php:175
+msgid "Digikala"
+msgstr "دیجی‌کالا"
+
+#: admin/class-wp-quickotp-admin.php:184
+msgid "sms.ir"
+msgstr "sms.ir"
+
+#: admin/class-wp-quickotp-admin.php:185
+msgid "Melipayamak"
+msgstr "ملی‌پیامک"
+
+#: admin/class-wp-quickotp-admin.php:228
+msgid "Select a page"
+msgstr "انتخاب برگه"
+
+#: includes/class-wp-quickotp-rest-api.php:41
+msgid "Invalid SMS provider."
+msgstr "درگاه پیامک نامعتبر است."
+
+#: includes/class-wp-quickotp-rest-api.php:64
+msgid "Invalid OTP."
+msgstr "کد تایید نامعتبر است."
+
+#: templates/template-simple.php:4
+msgid "Mobile Number"
+msgstr "شماره موبایل"
+
+#: templates/template-simple.php:8
+msgid "Send OTP"
+msgstr "ارسال کد تایید"
+
+#: templates/template-simple.php:14
+msgid "OTP"
+msgstr "کد تایید"
+
+#: templates/template-simple.php:18
+msgid "Login"
+msgstr "ورود"
+
+#: templates/template-digikala.php:3
+msgid "Login | Register"
+msgstr "ورود | ثبت‌نام"
+
+#: templates/template-digikala.php:7
+msgid "Enter your mobile number"
+msgstr "شماره موبایل خود را وارد کنید"
+
+#: templates/template-digikala.php:11
+msgid "Login"
+msgstr "ورود"
+
+#: templates/template-digikala.php:17
+msgid "Enter the verification code"
+msgstr "کد تایید را وارد کنید"
+
+#: templates/template-digikala.php:21
+msgid "Confirm and continue"
+msgstr "تایید و ادامه"

@@ -1,0 +1,31 @@
+.wp-quickotp-container-simple {
+    border: 1px solid #ccc;
+    padding: 20px;
+    max-width: 300px;
+}
+
+.wp-quickotp-container-digikala {
+    border: 1px solid #e0e0e0;
+    padding: 20px;
+    max-width: 400px;
+    text-align: center;
+}
+
+.digikala-style-header h3 {
+    font-size: 1.2em;
+    margin-bottom: 20px;
+}
+
+.wp-quickotp-form-row {
+    margin-bottom: 15px;
+}
+
+.wp-quickotp-form-row label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.wp-quickotp-form-row .input {
+    width: 100%;
+    padding: 10px;
+}
