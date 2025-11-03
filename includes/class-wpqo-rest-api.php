@@ -1,115 +1,81 @@
 <?php
-// Prevent direct access
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
+namespace WPQuickOTP;
+if ( ! defined( 'ABSPATH' ) ) exit;
 
-class WPQO_REST_API {
+class REST_API {
 
     public function __construct() {
-        add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+        add_action('rest_api_init', [ $this, 'register_routes' ]);
     }
 
     public function register_routes() {
-        register_rest_route(
-            'wpqo/v1',
-            '/send-otp',
-            array(
-                'methods'             => 'POST',
-                'callback'            => array( $this, 'send_otp_callback' ),
-                'permission_callback' => '__return_true',
-            )
-        );
+        register_rest_route('wpqo/v1', '/send-otp', [
+            'methods'  => 'POST',
+            'callback' => [ $this, 'send_otp' ],
+            'permission_callback' => [ $this, 'check_nonce' ],
+        ]);
 
-        register_rest_route(
-            'wpqo/v1',
-            '/verify-otp',
-            array(
-                'methods'             => 'POST',
-                'callback'            => array( $this, 'verify_otp_callback' ),
-                'permission_callback' => '__return_true',
-            )
-        );
+        register_rest_route('wpqo/v1', '/verify-otp', [
+            'methods'  => 'POST',
+            'callback' => [ $this, 'verify_otp' ],
+            'permission_callback' => [ $this, 'check_nonce' ],
+        ]);
     }
 
-    public function send_otp_callback( $request ) {
-        if ( ! wp_verify_nonce( $request->get_header( 'X-WP-Nonce' ), 'wp_rest' ) ) {
-            return new WP_Error( 'invalid_nonce', __( 'Nonce نامعتبر است.', 'wp-quickotp' ), array( 'status' => 403 ) );
-        }
-
-        $phone = sanitize_text_field( $request->get_param( 'phone' ) );
-
-        // I will add proper phone number validation here.
-        if ( empty( $phone ) ) {
-            return new WP_Error( 'invalid_phone', __( 'شماره موبایل نامعتبر است.', 'wp-quickotp' ), array( 'status' => 400 ) );
-        }
-
-        // I will add rate limiting checks here later.
-
-        $otp = WPQO_OTP::generate_and_save( $phone );
-
-        $sms_options = get_option( 'wpqo_sms_options' );
-        $provider_name = isset( $sms_options['provider'] ) ? $sms_options['provider'] : '';
-        $message_template = isset( $sms_options['sms_template'] ) ? $sms_options['sms_template'] : __( 'کد تایید شما: {CODE}', 'wp-quickotp' );
-        $message = str_replace( array( '{CODE}', '{SITE_NAME}' ), array( $otp, get_bloginfo( 'name' ) ), $message_template );
-
-        $provider = null;
-        if ( $provider_name === 'smsir' ) {
-            $provider = new WPQO_SMS_Provider_SMSIR();
-        } elseif ( $provider_name === 'melipayamak' ) {
-            $provider = new WPQO_SMS_Provider_Melipayamak();
-        }
-
-        if ( $provider ) {
-            $result = $provider->send( $phone, $message );
-            if ( is_wp_error( $result ) ) {
-                return $result;
-            }
-        } else {
-            return new WP_Error( 'no_provider', __( 'سرویس‌دهنده پیامک انتخاب نشده است.', 'wp-quickotp' ), array( 'status' => 500 ) );
-        }
-
-        return new WP_REST_Response(
-            array(
-                'success' => true,
-                'message' => __( 'کد تایید با موفقیت ارسال شد.', 'wp-quickotp' ),
-            ),
-            200
-        );
+    public function check_nonce( \WP_REST_Request $req ) {
+        return wp_verify_nonce( $req->get_header('x-wp-nonce'), 'wp_rest' );
     }
 
-    public function verify_otp_callback( $request ) {
-        if ( ! wp_verify_nonce( $request->get_header( 'X-WP-Nonce' ), 'wp_rest' ) ) {
-            return new WP_Error( 'invalid_nonce', __( 'Nonce نامعتبر است.', 'wp-quickotp' ), array( 'status' => 403 ) );
+    public function send_otp( \WP_REST_Request $req ) {
+        $phone     = sanitize_text_field( $req->get_param('phone') );
+        $return_to = isset($_POST['return_to']) ? esc_url_raw( $req->get_param('return_to') ) : '';
+
+        if ( empty($phone) ) {
+            return new \WP_Error('bad_request', __('شماره موبایل الزامی است.', 'wp-quickotp'), ['status' => 400]);
         }
 
-        $phone = sanitize_text_field( $request->get_param( 'phone' ) );
-        $otp   = sanitize_text_field( $request->get_param( 'otp' ) );
-
-        if ( WPQO_OTP::verify( $phone, $otp ) ) {
-            $user = get_user_by( 'login', $phone );
-            if ( ! $user ) {
-                // I am creating a new user since one doesn't exist with this phone number.
-                $password = wp_generate_password();
-                $user_id = wp_create_user( $phone, $password );
-                wp_update_user( array( 'ID' => $user_id, 'role' => 'customer' ) );
-                $user = get_user_by( 'id', $user_id );
-            }
-
-            // I am logging the user in.
-            wp_set_current_user( $user->ID, $user->user_login );
-            wp_set_auth_cookie( $user->ID );
-            do_action( 'wp_login', $user->user_login, $user );
-
-            return new WP_REST_Response(
-                array(
-                    'success' => true,
-                    'message' => __( 'ورود با موفقیت انجام شد.', 'wp-quickotp' ),
-                ),
-                200
-            );
-        } else {
-            return new WP_Error( 'invalid_otp', __( 'کد تایید نامعتبر است.', 'wp-quickotp' ), array( 'status' => 400 ) );
+        // تولید و ذخیره OTP + ارسال SMS (ارسال را می‌توانید به Provider بسپارید)
+        $res = \WPQuickOTP\OTP::generate_and_store_otp( $phone );
+        if ( is_wp_error($res) ) {
+            return $res;
         }
+
+        /**
+         * در صورت تمایل، این اکشن را روی Provider خود هندل کنید:
+         * do_action( 'wpqo/send_sms', $phone, $res['otp'] );
+         * ما برای امنیت، OTP را معمولاً هش می‌کنیم و مقدار خام را لاگ نمی‌گیریم.
+         */
+
+        return new \WP_REST_Response([ 'ok' => true ], 200);
+    }
+
+    public function verify_otp( \WP_REST_Request $req ) {
+        $phone = sanitize_text_field( $req->get_param('phone') );
+        $otp   = sanitize_text_field( $req->get_param('otp') );
+
+        if ( empty($phone) || empty($otp) ) {
+            return new \WP_Error('bad_request', __('اطلاعات ناقص است.', 'wp-quickotp'), ['status' => 400]);
+        }
+
+        $res = \WPQuickOTP\OTP::verify_otp( $phone, $otp );
+        if ( is_wp_error($res) ) {
+            return $res;
+        }
+
+        // ایجاد/ورود کاربر
+        $user_id = \WPQuickOTP\OTP::login_or_register_user_by_phone( $phone );
+        if ( is_wp_error($user_id) ) {
+            return $user_id;
+        }
+        wp_set_current_user($user_id);
+        wp_set_auth_cookie($user_id, true);
+
+        // مقصد پس از ورود
+        $opts = get_option('wp_quickotp_options', []);
+        $redirect = ! empty($opts['redirect_after_login'])
+            ? $opts['redirect_after_login']
+            : ( function_exists('wc_get_page_permalink') ? wc_get_page_permalink('myaccount') : home_url('/') );
+
+        return new \WP_REST_Response([ 'ok' => true, 'redirect' => esc_url_raw($redirect) ], 200);
     }
 }

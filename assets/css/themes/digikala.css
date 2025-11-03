@@ -1,0 +1,23 @@
+/* Digikala Theme (matches templates/digikala.php) */
+.wpqo-container.dk{direction:rtl;display:flex;align-items:center;justify-content:center;min-height:70vh;background:#fafafa;font-family:var(--wpqo-font-family)}
+.dk-card{width:100%;max-width:420px;background:#fff;border:1px solid #e0e0e6;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.04);padding:0;overflow:hidden}
+.dk-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 0 16px}
+.dk-arrow{color:#7a7f84}
+.dk-brand img{height:20px}
+.dk-logo-text{font-weight:800;color:#ef394e}
+.dk-body{padding:16px 20px 20px 20px}
+.dk-title{font-size:16px;font-weight:800;color:#2a2a2a;margin:8px 0 6px 0}
+.dk-subtitle{color:#777;font-size:13px;margin:0 0 16px 0}
+.dk-form .dk-input{height:44px;border:1px solid #e0e0e6;border-radius:8px}
+.dk-btn{height:46px;background:#ef394e;border-radius:8px;font-weight:700}
+.dk-btn:hover{filter:brightness(.95)}
+.dk-terms{margin-top:10px;color:#6f6f6f;font-size:12px;line-height:1.8}
+.dk-terms a{color:#00bfd6;text-decoration:none;border-bottom:1px dashed rgba(0,191,214,.25)}
+.dk-terms a:hover{border-bottom-color:#00bfd6}
+.dk-timer{margin-top:8px}
+.dk-resend{background:none;border:none;color:#ef394e;font-weight:700;cursor:pointer}
+.dk-resend[disabled]{opacity:.5;cursor:not-allowed}
+@media (max-width:480px){
+  .dk-card{margin:12px}
+  .dk-body{padding:16px}
+}

@@ -1,0 +1,52 @@
+/* Base styles for WP QuickOTP */
+.wpqo-container {
+    max-width: 480px;
+    margin: 40px auto;
+    padding: 20px;
+    box-sizing: border-box;
+}
+.wpqo-field {
+    margin-bottom: 15px;
+}
+.wpqo-label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+.wpqo-input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: var(--wpqo-radius);
+}
+.wpqo-btn {
+    width: 100%;
+    padding: 12px;
+    background-color: var(--wpqo-btn-color);
+    color: #fff;
+    border: none;
+    border-radius: var(--wpqo-radius);
+    cursor: pointer;
+    font-size: 16px;
+}
+.wpqo-timer, .wpqo-resend {
+    margin-top: 15px;
+    text-align: center;
+}
+.wpqo-resend {
+    background: none;
+    border: none;
+    color: var(--wpqo-main-color);
+    cursor: pointer;
+}
+.wpqo-resend[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
