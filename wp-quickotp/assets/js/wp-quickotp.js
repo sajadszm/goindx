@@ -1,76 +1,83 @@
+/* === BEGIN: wp-quickotp.js (REPLACE EXACTLY) === */
 (function($){
   const API = window.wpqoAPI || {};
-  const sec = (n)=> n*1000;
+  const toEn = s => s ? s.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)) : '';
 
-  function toEnDigits(str){ return str.replace(/[۰-۹]/g, d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)); }
-
-  function startTimer($wrap, seconds, onDone){
+  function startTimer($count, seconds, onDone){
     let left = seconds;
-    const $timer = $wrap.find('.wpqo-timer-count');
+    $count.text(left);
     const iv = setInterval(()=>{
       left--;
-      $timer.text(left);
-      if(left<=0){ clearInterval(iv); onDone && onDone(); }
-    },1000);
+      if(left <= 0){
+        clearInterval(iv);
+        onDone && onDone();
+      }else{
+        $count.text(left);
+      }
+    }, 1000);
   }
 
-  function sendOTP(phone, returnTo){
+  function ajax(url, data){
     return $.ajax({
-      url: API.root + '/wpqo/v1/send-otp',
+      url,
       method: 'POST',
-      beforeSend: (xhr)=> xhr.setRequestHeader('X-WP-Nonce', API.nonce),
-      data: { phone, return_to: returnTo }
-    });
-  }
-  function verifyOTP(phone, code){
-    return $.ajax({
-      url: API.root + '/wpqo/v1/verify-otp',
-      method: 'POST',
-      beforeSend: (xhr)=> xhr.setRequestHeader('X-WP-Nonce', API.nonce),
-      data: { phone, otp: code }
+      data,
+      beforeSend: (xhr)=> xhr.setRequestHeader('X-WP-Nonce', API.nonce)
     });
   }
 
-  $(document).on('submit', '#wpqo-phone-form', function(e){
+  function sendOTP(phone, returnTo){ return ajax(API.root + '/send-otp', {phone, return_to: returnTo || ''}); }
+  function verifyOTP(phone, otp){ return ajax(API.root + '/verify-otp', {phone, otp}); }
+
+  $(document).on('submit', '#wpqo-form-phone', function(e){
     e.preventDefault();
-    const $f = $(this), phone = toEnDigits($f.find('input[name=phone]').val().trim());
-    const returnTo = $f.find('input[name=return_to]').val() || '';
-    $f.find('.wpqo-msg').remove();
-    sendOTP(phone, returnTo).done(res=>{
-      $f.closest('.wpqo-phone-step').hide();
-      $f.closest('.wpqo-form-body').find('.wpqo-otp-step').fadeIn(150).data('phone', phone);
-      const $resend = $('#wpqo-resend-otp-btn'); $resend.prop('disabled', true);
-      startTimer($('#wpqo-otp-wrap'), API.resendDelay || 60, ()=> $resend.prop('disabled', false));
-    }).fail(xhr=>{
-      $f.append('<div class="wpqo-msg error">خطا در ارسال کد. لطفاً دوباره تلاش کنید.</div>');
+    const $form = $(this);
+    const phone = toEn($form.find('input[name=phone]').val().trim());
+    const returnTo = $form.find('input[name=return_to]').val() || '';
+    $form.find('.wpqo-msg').remove();
+
+    sendOTP(phone, returnTo).done(()=>{
+      $('#step-phone').hide();
+      $('#step-otp').fadeIn(150);
+      const $btn = $('#wpqo-resend');
+      $btn.prop('disabled', true);
+      startTimer($('#wpqo-count'), API.resendDelay || 60, ()=> $btn.prop('disabled', false));
+    }).fail((xhr)=>{
+      $form.append('<div class="wpqo-msg error">خطا در ارسال کد. لطفاً دوباره تلاش کنید.</div>');
     });
   });
 
-  $(document).on('click', '#wpqo-resend-otp-btn', function(){
-    const $otpWrap = $('#wpqo-otp-wrap'), phone = $('#wpqo-form-otp').data('phone');
-    $(this).prop('disabled', true);
+  $(document).on('click', '#wpqo-resend', function(){
+    const $btn = $(this);
+    const phone = toEn($('#wpqo-form-phone').find('input[name=phone]').val().trim());
+    $btn.prop('disabled', true);
     sendOTP(phone, '').always(()=> {
-      startTimer($otpWrap, API.resendDelay || 60, ()=> $('#wpqo-resend-otp-btn').prop('disabled', false));
+      startTimer($('#wpqo-count'), API.resendDelay || 60, ()=> $btn.prop('disabled', false));
     });
   });
 
-  $(document).on('submit', '#wpqo-otp-form', function(e){
+  $(document).on('submit', '#wpqo-form-otp', function(e){
     e.preventDefault();
-    const $f = $(this), code = toEnDigits($f.find('input[name=otp]').val().trim());
-    const phone = $f.data('phone');
-    $f.find('.wpqo-msg').remove();
-    verifyOTP(phone, code).done(res=>{
-      window.location.href = res && res.redirect ? res.redirect : (API.afterLogin || '/');
-    }).fail(xhr=>{
-      $f.append('<div class="wpqo-msg error">کد تایید نامعتبر یا منقضی است.</div>');
+    const $form = $(this);
+    const phone = toEn($('#wpqo-form-phone').find('input[name=phone]').val().trim());
+    const otp = toEn($form.find('input[name=otp]').val().trim());
+    $form.find('.wpqo-msg').remove();
+
+    verifyOTP(phone, otp).done((res)=>{
+      window.location.href = (res && res.redirect) ? res.redirect : (API.afterLogin || '/');
+    }).fail(()=>{
+      $form.append('<div class="wpqo-msg error">کد تایید نامعتبر یا منقضی است.</div>');
     });
   });
 
-  // Optional: WebOTP (only in supported browsers over HTTPS)
-  if('OTPCredential' in window){
-    navigator.credentials.get({ otp: { transport: ['sms'] }, signal: new AbortController().signal })
-      .then(cred=>{
-        if(cred && cred.code){ $('#wpqo-otp-input').val(cred.code); }
-      }).catch(()=>{});
+  // WebOTP (optional)
+  if ('OTPCredential' in window){
+    try{
+      const ac = new AbortController();
+      navigator.credentials.get({ otp: { transport: ['sms'] }, signal: ac.signal })
+        .then(cred => { if(cred && cred.code){ $('#wpqo-form-otp input[name=otp]').val(cred.code); } })
+        .catch(()=>{});
+    }catch(e){}
   }
 })(jQuery);
+/* === END: wp-quickotp.js === */

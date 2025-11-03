@@ -1,9 +1,15 @@
 <?php
 
-class WPQO_Logger {
+namespace WPQuickOTP;
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class Logger {
 
     public static function log( $data ) {
-        if ( ! wpqo_get_option( 'enable_logging' ) ) {
+        if ( ! Helpers::get_option( 'enable_logging' ) ) {
             return;
         }
 

@@ -1,24 +1,50 @@
 <?php
 
-class WPQO_OTP {
+namespace WPQuickOTP;
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class OTP {
 
     public static function generate_and_store_otp( $phone, $provider ) {
+        // === BEGIN: SERVER RATE LIMIT (ADD EXACTLY) ===
         global $wpdb;
-        $table_name = $wpdb->prefix . 'quickotp_otp_logs';
+        $table      = $wpdb->prefix . 'quickotp_otp_logs';
+        $cooldown   = (int) Helpers::get_option('resend_cooldown', 60);
+        $daily_cap  = (int) Helpers::get_option('daily_cap', 5);
+        $ip         = self::get_client_ip();
 
-        $otp_length = wpqo_get_option( 'otp_length', 6 );
+        $cooldown_hit = (int) $wpdb->get_var( $wpdb->prepare(
+          "SELECT COUNT(*) FROM $table WHERE phone=%s AND created_at >= (NOW() - INTERVAL %d SECOND)",
+          $phone, $cooldown
+        ));
+        if ( $cooldown_hit > 0 ) {
+          return new \WP_Error('cooldown', __('لطفاً کمی صبر کنید و دوباره امتحان کنید.', 'wp-quickotp'));
+        }
+
+        $daily_hit = (int) $wpdb->get_var( $wpdb->prepare(
+          "SELECT COUNT(*) FROM $table WHERE phone=%s AND created_at >= (NOW() - INTERVAL 1 DAY)",
+          $phone
+        ));
+        if ( $daily_hit >= $daily_cap ) {
+          return new \WP_Error('daily_cap', __('تعداد درخواست‌های مجاز امروز برای این شماره به پایان رسیده است.', 'wp-quickotp'));
+        }
+        // === END: SERVER RATE LIMIT ===
+
+        $otp_length = Helpers::get_option( 'otp_length', 6 );
         $min = pow( 10, $otp_length - 1 );
         $max = pow( 10, $otp_length ) - 1;
         $otp = random_int( $min, $max );
 
-        $otp_hash = wp_hash_password( $otp );
+        $otp_hash = password_hash( (string)$otp, PASSWORD_DEFAULT );
         $created_at = current_time( 'mysql' );
-        $otp_expiry = wpqo_get_option( 'otp_expiry', 120 );
+        $otp_expiry = Helpers::get_option( 'otp_expiry', 120 );
         $expires_at = date( 'Y-m-d H:i:s', strtotime( "+$otp_expiry seconds", strtotime( $created_at ) ) );
-        $ip = self::get_client_ip();
 
         $wpdb->insert(
-            $table_name,
+            $table,
             array(
                 'phone'      => $phone,
                 'otp_hash'   => $otp_hash,
@@ -51,7 +77,7 @@ class WPQO_OTP {
             return false;
         }
 
-        $max_attempts = wpqo_get_option( 'max_attempts', 5 );
+        $max_attempts = Helpers::get_option( 'max_attempts', 5 );
         if ( $record->attempts >= $max_attempts ) {
             self::update_otp_status( $record->id, 'max_attempts_reached' );
             return false;
@@ -63,7 +89,7 @@ class WPQO_OTP {
             array( 'id' => $record->id )
         );
 
-        if ( wp_check_password( $otp, $record->otp_hash ) ) {
+        if ( password_verify( (string)$otp, $record->otp_hash ) ) {
             self::update_otp_status( $record->id, 'verified' );
             return true;
         }
@@ -81,7 +107,7 @@ class WPQO_OTP {
         );
     }
 
-    private static function get_client_ip() {
+    public static function get_client_ip() {
         $ipaddress = '';
         if ( isset( $_SERVER['HTTP_CLIENT_IP'] ) ) {
             $ipaddress = $_SERVER['HTTP_CLIENT_IP'];
@@ -99,48 +125,5 @@ class WPQO_OTP {
             $ipaddress = 'UNKNOWN';
         }
         return $ipaddress;
-    }
-
-    public static function normalize_phone( $phone ) {
-        // Remove all non-numeric characters from the phone number.
-        $phone = preg_replace( '/\D/', '', $phone );
-        // Remove leading zeros.
-        $phone = ltrim( $phone, '0' );
-        // If the number starts with the country code, remove it.
-        $default_country_code = wpqo_get_option( 'default_country_code', '98' );
-        if ( substr( $phone, 0, strlen( $default_country_code ) ) === $default_country_code ) {
-            $phone = substr( $phone, strlen( $default_country_code ) );
-        }
-        // Add a leading zero to the number.
-        $phone = '0' . $phone;
-        return $phone;
-    }
-
-    public static function login_or_register_user( $phone ) {
-        $normalized_phone = self::normalize_phone( $phone );
-        $user = get_user_by( 'login', $normalized_phone );
-
-        if ( $user ) {
-            wp_set_current_user( $user->ID, $normalized_phone );
-            wp_set_auth_cookie( $user->ID );
-            do_action( 'wp_login', $normalized_phone, $user );
-            do_action( 'wpqo_after_login_success', $user );
-            return $user->ID;
-        } else {
-            $password = wp_generate_password();
-            $user_id = wp_create_user( $normalized_phone, $password );
-            if ( is_wp_error( $user_id ) ) {
-                do_action( 'wpqo_after_login_failure', $phone, $user_id );
-                return $user_id;
-            }
-            $user = get_user_by( 'id', $user_id );
-            $user->set_role( 'customer' );
-
-            wp_set_current_user( $user_id, $normalized_phone );
-            wp_set_auth_cookie( $user_id );
-            do_action( 'wp_login', $normalized_phone, $user );
-            do_action( 'wpqo_after_registration', $user );
-            return $user_id;
-        }
     }
 }
