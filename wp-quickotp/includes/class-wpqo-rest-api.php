@@ -6,6 +6,6 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class Tools {
+class REST_API {
 
 }

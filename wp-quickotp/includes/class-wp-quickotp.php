@@ -20,25 +20,31 @@ class WP_QuickOTP {
     }
 
     private function includes() {
-        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wp-quickotp-ajax.php';
-        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wp-quickotp-sms.php';
-        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wp-quickotp-settings.php';
-        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wp-quickotp-template-loader.php';
-        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wp-quickotp-logger.php';
         require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/helpers.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-otp.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-sms-providers.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-frontend.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-admin.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-rest-api.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-woocommerce.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-activator.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-popup.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-sessions.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-logger.php';
+        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wpqo-tools.php';
     }
 
     private function init_hooks() {
         add_action( 'plugins_loaded', array( $this, 'load_textdomain' ) );
-        register_activation_hook( WP_QUICKOTP_PLUGIN_FILE, array( $this, 'activate' ) );
+        register_activation_hook( WP_QUICKOTP_PLUGIN_FILE, array( __NAMESPACE__ . '\Activator', 'activate' ) );
+
+        new Frontend();
+        new Admin();
+        new REST_API();
+        new WooCommerce();
     }
 
     public function load_textdomain() {
         load_plugin_textdomain( 'wp-quickotp', false, dirname( plugin_basename( WP_QUICKOTP_PLUGIN_FILE ) ) . '/languages' );
-    }
-
-    public function activate() {
-        require_once WP_QUICKOTP_PLUGIN_PATH . 'includes/class-wp-quickotp-activator.php';
-        Activator::activate();
     }
 }
