@@ -8,6 +8,22 @@
         var otpInput = $( '#wp-quickotp-otp' );
         var messageContainer = $( '#wp-quickotp-message' );
         var timerContainer = $( '#wp-quickotp-timer' );
+        var popupOverlay = $( '#wpqo-popup-overlay' );
+        var popupContainer = $( '#wpqo-popup-container' );
+        var closePopup = $( '#wpqo-close-popup' );
+        var openPopup = $( '.wpqo-open-popup' );
+
+        openPopup.on( 'click', function( e ) {
+            e.preventDefault();
+            popupOverlay.show();
+            popupContainer.show();
+        });
+
+        closePopup.on( 'click', function( e ) {
+            e.preventDefault();
+            popupOverlay.hide();
+            popupContainer.hide();
+        });
 
         form.on( 'submit', function( e ) {
             e.preventDefault();

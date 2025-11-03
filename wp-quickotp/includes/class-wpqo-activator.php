@@ -1,6 +1,6 @@
 <?php
 
-class WP_QuickOTP_Activator {
+class WPQO_Activator {
     public static function activate() {
         global $wpdb;
         $table_name = $wpdb->prefix . 'quickotp_otp_logs';
