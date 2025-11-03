@@ -14,16 +14,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 <div class="wpqo-template-default">
     <div class="wpqo-form-container">
         <div class="wpqo-form-header">
-            <?php if ( $logo = wpqo_get_option( 'template_logo' ) ) : ?>
+            <?php if ( $logo = Helpers::get_option( 'template_logo' ) ) : ?>
                 <img src="<?php echo esc_url( $logo ); ?>" alt="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>">
             <?php else : ?>
                 <h2><?php echo esc_html( get_bloginfo( 'name' ) ); ?></h2>
             <?php endif; ?>
-            <h3><?php echo esc_html( wpqo_get_option( 'login_form_title', __( 'ورود | ثبت‌نام', 'wp-quickotp' ) ) ); ?></h3>
+            <h3><?php echo esc_html( Helpers::get_option( 'login_form_title', __( 'ورود | ثبت‌نام', 'wp-quickotp' ) ) ); ?></h3>
         </div>
         <div class="wpqo-form-body">
             <div class="wpqo-phone-step">
-                <p><?php echo esc_html( wpqo_get_option( 'login_form_subtitle', __( 'شماره موبایل خود را وارد کنید', 'wp-quickotp' ) ) ); ?></p>
+                <p><?php echo esc_html( Helpers::get_option( 'login_form_subtitle', __( 'شماره موبایل خود را وارد کنید', 'wp-quickotp' ) ) ); ?></p>
                 <form id="wpqo-phone-form">
                     <div class="wpqo-form-row">
                         <input type="text" id="wpqo-phone-input" dir="ltr" placeholder="<?php _e( 'مثال: 09123456789', 'wp-quickotp' ); ?>">
@@ -37,7 +37,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                 </form>
             </div>
             <div class="wpqo-otp-step" style="display: none;">
-                <p><?php echo esc_html( wpqo_get_option( 'otp_sent_message', __( 'کد تایید به شماره شما ارسال شد', 'wp-quickotp' ) ) ); ?></p>
+                <p><?php echo esc_html( Helpers::get_option( 'otp_sent_message', __( 'کد تایید به شماره شما ارسال شد', 'wp-quickotp' ) ) ); ?></p>
                 <form id="wpqo-otp-form">
                     <div class="wpqo-form-row">
                         <input type="text" id="wpqo-otp-input" dir="ltr">

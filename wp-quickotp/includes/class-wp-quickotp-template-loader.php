@@ -2,7 +2,7 @@
 
 namespace WPQuickOTP;
 
-if ( ! defined( 'ABSPath' ) ) {
+if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 

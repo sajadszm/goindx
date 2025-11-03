@@ -15,8 +15,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     <div class="wpqo-form-container">
         <div class="wpqo-form-body">
             <div class="wpqo-phone-step">
-                <h3><?php echo esc_html( wpqo_get_option( 'login_form_title', __( 'ورود | ثبت‌نام', 'wp-quickotp' ) ) ); ?></h3>
-                <p><?php echo esc_html( wpqo_get_option( 'login_form_subtitle', __( 'شماره موبایل خود را وارد کنید', 'wp-quickotp' ) ) ); ?></p>
+                <h3><?php echo esc_html( Helpers::get_option( 'login_form_title', __( 'ورود | ثبت‌نام', 'wp-quickotp' ) ) ); ?></h3>
+                <p><?php echo esc_html( Helpers::get_option( 'login_form_subtitle', __( 'شماره موبایل خود را وارد کنید', 'wp-quickotp' ) ) ); ?></p>
                 <form id="wpqo-phone-form">
                     <div class="wpqo-form-row">
                         <input type="text" id="wpqo-phone-input" dir="ltr" placeholder="<?php _e( 'مثال: 09123456789', 'wp-quickotp' ); ?>">
@@ -31,7 +31,7 @@ if ( ! defined( 'ABSPATH' ) ) {
             </div>
             <div class="wpqo-otp-step" style="display: none;">
                 <h3><?php _e( 'کد تایید را وارد کنید', 'wp-quickotp' ); ?></h3>
-                <p><?php echo esc_html( wpqo_get_option( 'otp_sent_message', __( 'کد تایید به شماره شما ارسال شد', 'wp-quickotp' ) ) ); ?></p>
+                <p><?php echo esc_html( Helpers::get_option( 'otp_sent_message', __( 'کد تایید به شماره شما ارسال شد', 'wp-quickotp' ) ) ); ?></p>
                 <form id="wpqo-otp-form">
                     <div class="wpqo-form-row">
                         <input type="text" id="wpqo-otp-input" dir="ltr">

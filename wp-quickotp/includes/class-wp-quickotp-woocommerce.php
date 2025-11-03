@@ -6,6 +6,6 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class Logger {
+class WooCommerce {
 
 }
