@@ -1,0 +1,14 @@
+.wpqo-template-minimal .wpqo-form-container {
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 20px;
+    border-radius: var(--wpqo-border-radius);
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.wpqo-template-minimal .wpqo-form-body {
+    text-align: center;
+}

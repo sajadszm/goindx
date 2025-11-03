@@ -3,7 +3,7 @@
  * Plugin Name:       WP-QuickOTP
  * Plugin URI:        https://example.com/
  * Description:       Passwordless, mobile-number + OTP login and registration for WooCommerce.
- * Version:           2.0.0
+ * Version:           3.0.0
  * Author:            Jules
  * Author URI:        https://example.com/
  * License:           GPL-2.0+
@@ -17,10 +17,10 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-define( 'WP_QUICKOTP_VERSION', '2.0.0' );
+define( 'WP_QUICKOTP_VERSION', '3.0.0' );
+define( 'WP_QUICKOTP_PLUGIN_FILE', __FILE__ );
 define( 'WP_QUICKOTP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 
-require_once WP_QUICKOTP_PLUGIN_DIR . 'includes/class-wpqo-activator.php';
-register_activation_hook( __FILE__, array( 'WPQO_Activator', 'activate' ) );
+require_once WP_QUICKOTP_PLUGIN_DIR . 'includes/class-wp-quickotp.php';
 
-require_once WP_QUICKOTP_PLUGIN_DIR . 'includes/class-wpqo-init.php';
+new WPQuickOTP\WP_QuickOTP();

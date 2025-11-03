@@ -1,0 +1,69 @@
+:root {
+    --wpqo-main-color: #4a90e2;
+    --wpqo-accent-color: #f5a623;
+    --wpqo-button-color: #4a90e2;
+    --wpqo-font-family: 'Vazir', sans-serif;
+    --wpqo-border-radius: 5px;
+    --wpqo-shadow-style: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.wpqo-form-container {
+    font-family: var(--wpqo-font-family);
+    direction: rtl;
+}
+
+.wpqo-form-row {
+    margin-bottom: 15px;
+}
+
+.wpqo-form-row input {
+    width: 100%;
+    padding: 10px;
+    border-radius: var(--wpqo-border-radius);
+    border: 1px solid #ccc;
+}
+
+.wpqo-form-row button {
+    width: 100%;
+    padding: 10px;
+    border-radius: var(--wpqo-border-radius);
+    background-color: var(--wpqo-button-color);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    position: relative;
+}
+
+.wpqo-loader {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid var(--wpqo-main-color);
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+.wpqo-message-container {
+    margin-top: 15px;
+    color: red;
+}
+
+.wpqo-timer-container {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.wpqo-timer {
+    display: inline-block;
+    margin-left: 10px;
+}

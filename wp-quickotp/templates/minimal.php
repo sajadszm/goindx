@@ -1,0 +1,54 @@
+<?php
+/**
+ * Minimal OTP Login/Register Template
+ *
+ * @package WPQuickOTP
+ * @version 3.0.0
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+?>
+<div class="wpqo-template-minimal">
+    <div class="wpqo-form-container">
+        <div class="wpqo-form-body">
+            <div class="wpqo-phone-step">
+                <h3><?php echo esc_html( wpqo_get_option( 'login_form_title', __( 'ورود | ثبت‌نام', 'wp-quickotp' ) ) ); ?></h3>
+                <p><?php echo esc_html( wpqo_get_option( 'login_form_subtitle', __( 'شماره موبایل خود را وارد کنید', 'wp-quickotp' ) ) ); ?></p>
+                <form id="wpqo-phone-form">
+                    <div class="wpqo-form-row">
+                        <input type="text" id="wpqo-phone-input" dir="ltr" placeholder="<?php _e( 'مثال: 09123456789', 'wp-quickotp' ); ?>">
+                    </div>
+                    <div class="wpqo-form-row">
+                        <button type="submit" id="wpqo-send-otp-btn">
+                            <span class="wpqo-btn-text"><?php _e( 'ارسال کد', 'wp-quickotp' ); ?></span>
+                            <span class="wpqo-loader"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div class="wpqo-otp-step" style="display: none;">
+                <h3><?php _e( 'کد تایید را وارد کنید', 'wp-quickotp' ); ?></h3>
+                <p><?php echo esc_html( wpqo_get_option( 'otp_sent_message', __( 'کد تایید به شماره شما ارسال شد', 'wp-quickotp' ) ) ); ?></p>
+                <form id="wpqo-otp-form">
+                    <div class="wpqo-form-row">
+                        <input type="text" id="wpqo-otp-input" dir="ltr">
+                    </div>
+                    <div class="wpqo-form-row">
+                        <button type="submit" id="wpqo-verify-otp-btn">
+                            <span class="wpqo-btn-text"><?php _e( 'تایید', 'wp-quickotp' ); ?></span>
+                            <span class="wpqo-loader"></span>
+                        </button>
+                    </div>
+                </form>
+                <div class="wpqo-timer-container">
+                    <div class="wpqo-timer"></div>
+                    <a href="#" id="wpqo-resend-otp-btn" style="display: none;"><?php _e( 'ارسال مجدد', 'wp-quickotp' ); ?></a>
+                </div>
+            </div>
+        </div>
+        <div class="wpqo-message-container"></div>
+    </div>
+</div>
