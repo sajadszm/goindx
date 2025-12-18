@@ -12,23 +12,19 @@ class AppController:
     """
     def __init__(self, root):
         self.root = root
-        # Pass the start_search method to the UI. It will be called on button click.
         self.ui = AppUI(root, self.start_search_thread)
 
     def start_search_thread(self, city, keyword):
         """
         Starts the search process in a new thread to keep the UI responsive.
         """
-        # Disable UI elements while the search is in progress.
         self.ui.set_ui_state(True)
-        # Clear the status area for the new search.
         self.ui.status_area.configure(state='normal')
         self.ui.status_area.delete('1.0', tk.END)
         self.ui.status_area.configure(state='disabled')
 
-        # Create and start the background thread.
         thread = threading.Thread(target=self.run_search, args=(city, keyword))
-        thread.daemon = True # Allows the main app to exit even if the thread is running.
+        thread.daemon = True
         thread.start()
 
     def run_search(self, city, keyword):
@@ -43,15 +39,14 @@ class AppController:
             businesses, error = fetch_businesses(city, keyword)
             if error:
                 self.log(f"ERROR: {error}")
-                return # Stop the process if fetching fails.
+                return
             if not businesses:
                 self.log("No businesses found matching the criteria in OSM.")
                 return
 
-            self.log(f"Found {len(businesses)} potential businesses in OSM. Now classifying...")
+            self.log(f"Found {len(businesses)} potential businesses. Now classifying and verifying...")
 
             qualified_leads = []
-            # 2. Classify and verify each business.
             for i, business in enumerate(businesses, 1):
                 tags = business.get("tags", {})
                 business_name = tags.get("name", "N/A")
@@ -59,34 +54,31 @@ class AppController:
 
                 self.log(f"({i}/{len(businesses)}) Processing: {business_name}")
 
-                # a. Initial classification based on OSM data.
-                status, social_type = classify_website(website_url)
+                # a. Initial classification, now with redirect resolution.
+                status, platform = classify_website(website_url, resolve_redirects=True)
 
+                # --- FIX 2: DIRECTORY VS SOCIAL MISCLASSIFICATION ---
+                # Businesses are now only candidates if they have NO website or a SOCIAL ONLY website.
+                # Directory sites are now correctly excluded from the final output.
                 if status in ['NO_WEBSITE', 'SOCIAL_ONLY']:
-                    # b. Secondary verification for candidates.
-                    self.log(f"  -> Candidate. Performing secondary web verification...")
+                    self.log(f"  -> Candidate (Status: {status}). Performing secondary web verification...")
                     evidence_url, verifier_error = verify_business_website(business_name, city)
                     if verifier_error:
                         self.log(f"  -> WARNING: {verifier_error}")
 
-                    # If no custom website was found, add to leads list.
                     if not evidence_url:
-                        self.log(f"  -> SUCCESS: No custom website found. Adding to leads.")
+                        self.log(f"  -> SUCCESS: Verification passed. Adding to leads.")
                         lead = {
-                            "business_name": business_name,
-                            "city_region": city,
-                            "keyword": keyword,
+                            "business_name": business_name, "city_region": city, "keyword": keyword,
                             "phone": tags.get("phone") or tags.get("contact:phone"),
-                            "osm_website": website_url,
-                            "final_status": status,
-                            "social_type": social_type,
-                            "evidence_url": "", # Will be empty unless we want to log directory links
+                            "osm_website": website_url, "final_status": status,
+                            "social_type": platform, "evidence_url": "",
                         }
                         qualified_leads.append(lead)
                     else:
-                        self.log(f"  -> Discarded. Found potential custom website: {evidence_url}")
+                        self.log(f"  -> Discarded. Verifier found a potential custom website: {evidence_url}")
                 else:
-                    self.log("  -> Discarded. Business has a custom website in OSM.")
+                    self.log(f"  -> Discarded. Initial classification was '{status}'.")
 
             # 3. Export the results.
             if qualified_leads:
@@ -102,21 +94,16 @@ class AppController:
         except Exception as e:
             self.log(f"An unexpected error occurred: {e}")
         finally:
-            # 4. Re-enable the UI when the process is finished.
             self.ui.set_ui_state(False)
 
     def log(self, message):
         """
         Logs a message to the UI's status area from any thread.
         """
-        # Safely schedule the UI update on the main thread.
         self.root.after(0, self.ui.log_message, message)
 
 
 def main():
-    """
-    Main function to initialize and run the application.
-    """
     root = tk.Tk()
     app = AppController(root)
     root.mainloop()
