@@ -1,0 +1,15 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment folders
+.env
+.venv
+env/
+venv/
+
+# IDE settings
+.idea/
+.vscode/
